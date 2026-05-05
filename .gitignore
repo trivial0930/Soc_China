@@ -1,0 +1,43 @@
+# OS and editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# ROS2 / colcon
+rdk_x5/ros2_ws/build/
+rdk_x5/ros2_ws/install/
+rdk_x5/ros2_ws/log/
+
+# Embedded build outputs
+stm32/firmware/build/
+stm32/firmware/Debug/
+stm32/firmware/Release/
+*.elf
+*.hex
+*.bin
+*.map
+*.o
+*.d
+
+# Runtime logs and captures
+logs/
+captures/
+*.log
+
+# Large local media/model files
+*.mp4
+*.mov
+*.avi
+*.onnx
+*.pt
+*.pth
