@@ -9,6 +9,9 @@ SOURCE_URI="${SOURCE_URI:-/dev/video0}"
 WIDTH="${WIDTH:-1280}"
 HEIGHT="${HEIGHT:-720}"
 FPS="${FPS:-15}"
+RTSP_TRANSPORT="${RTSP_TRANSPORT:-tcp}"
+OPEN_TIMEOUT_MS="${OPEN_TIMEOUT_MS:-5000}"
+READ_TIMEOUT_MS="${READ_TIMEOUT_MS:-5000}"
 USB_PIXEL_FORMAT="${USB_PIXEL_FORMAT:-mjpeg}"
 MIPI_VIDEO_DEVICE="${MIPI_VIDEO_DEVICE:-}"
 
@@ -40,5 +43,8 @@ ros2 launch perception_camera fixed_camera.launch.py \
   width:="${WIDTH}" \
   height:="${HEIGHT}" \
   fps:="${FPS}" \
+  rtsp_transport:="${RTSP_TRANSPORT}" \
+  open_timeout_ms:="${OPEN_TIMEOUT_MS}" \
+  read_timeout_ms:="${READ_TIMEOUT_MS}" \
   usb_pixel_format:="${USB_PIXEL_FORMAT}" \
   mipi_video_device:="${MIPI_VIDEO_DEVICE}"

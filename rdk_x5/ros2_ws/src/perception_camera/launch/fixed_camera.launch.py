@@ -21,6 +21,9 @@ def generate_launch_description():
     fps = LaunchConfiguration("fps")
     image_topic = LaunchConfiguration("image_topic")
     camera_info_topic = LaunchConfiguration("camera_info_topic")
+    rtsp_transport = LaunchConfiguration("rtsp_transport")
+    open_timeout_ms = LaunchConfiguration("open_timeout_ms")
+    read_timeout_ms = LaunchConfiguration("read_timeout_ms")
     usb_pixel_format = LaunchConfiguration("usb_pixel_format")
     mipi_video_device = LaunchConfiguration("mipi_video_device")
 
@@ -51,6 +54,9 @@ def generate_launch_description():
             DeclareLaunchArgument("fps", default_value="15.0"),
             DeclareLaunchArgument("image_topic", default_value="/fixed_camera/image_raw"),
             DeclareLaunchArgument("camera_info_topic", default_value="/fixed_camera/camera_info"),
+            DeclareLaunchArgument("rtsp_transport", default_value="tcp"),
+            DeclareLaunchArgument("open_timeout_ms", default_value="5000"),
+            DeclareLaunchArgument("read_timeout_ms", default_value="5000"),
             DeclareLaunchArgument("usb_pixel_format", default_value="mjpeg"),
             DeclareLaunchArgument("mipi_video_device", default_value=""),
             Node(
@@ -69,6 +75,9 @@ def generate_launch_description():
                         "width": width,
                         "height": height,
                         "fps": fps,
+                        "rtsp_transport": rtsp_transport,
+                        "open_timeout_ms": open_timeout_ms,
+                        "read_timeout_ms": read_timeout_ms,
                     },
                 ],
             ),

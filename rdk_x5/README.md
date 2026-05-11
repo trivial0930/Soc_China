@@ -41,6 +41,9 @@ SOURCE_TYPE=opencv SOURCE_URI=/dev/video0 ./rdk_x5/scripts/run_fixed_camera.sh
 RTSP 固定监控摄像头示例：
 
 ```bash
+CAMERA_URL=rtsp://USER:PASSWORD@CAMERA_IP:554/stream1 \
+./rdk_x5/scripts/check_wifi_camera.sh
+
 SOURCE_TYPE=opencv \
 SOURCE_URI=rtsp://USER:PASSWORD@CAMERA_IP:554/stream1 \
 WIDTH=1280 HEIGHT=720 FPS=15 \

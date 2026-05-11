@@ -18,6 +18,7 @@ RDK X5 固定监控摄像头接入包。
 
 官方文档依据：
 
+- RDK X5 支持 2.4GHz/5GHz WiFi，固定摄像头可以通过同一局域网传输 RTSP/HTTP 码流。
 - RDK X5 支持 USB 摄像头，接入后会生成 `/dev/video*`。
 - RDK X5 支持两路 MIPI CSI。
 - TogetheROS.Bot 的 `hobot_usb_cam` 和 `mipi_cam` 发布 ROS2 标准图像消息。
@@ -44,13 +45,25 @@ sudo apt install -y python3-opencv v4l-utils
 
 ### 1. 固定监控 RTSP 或 HTTP 流
 
+WiFi 固定摄像头推荐使用 RTSP TCP：
+
 ```bash
 ros2 launch perception_camera fixed_camera.launch.py \
   source_type:=opencv \
   source_uri:=rtsp://USER:PASSWORD@CAMERA_IP:554/stream1 \
   width:=1280 \
   height:=720 \
-  fps:=15
+  fps:=15 \
+  rtsp_transport:=tcp
+```
+
+使用脚本启动：
+
+```bash
+SOURCE_TYPE=opencv \
+SOURCE_URI=rtsp://USER:PASSWORD@CAMERA_IP:554/stream1 \
+WIDTH=1280 HEIGHT=720 FPS=15 \
+./rdk_x5/scripts/run_fixed_camera.sh
 ```
 
 发布话题：
@@ -58,6 +71,13 @@ ros2 launch perception_camera fixed_camera.launch.py \
 - `/fixed_camera/image_raw`
 - `/fixed_camera/camera_info`
 - `/fixed_camera/status`
+
+启动前可先检测 WiFi 摄像头链路：
+
+```bash
+CAMERA_URL=rtsp://USER:PASSWORD@CAMERA_IP:554/stream1 \
+./rdk_x5/scripts/check_wifi_camera.sh
+```
 
 ### 2. USB 摄像头，按 RDK 官方节点启动
 

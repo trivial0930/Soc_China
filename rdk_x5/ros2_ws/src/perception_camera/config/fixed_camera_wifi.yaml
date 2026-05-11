@@ -1,7 +1,7 @@
 fixed_camera_node:
   ros__parameters:
-    source_uri: "/dev/video0"
-    frame_id: "fixed_monitor_cam"
+    source_uri: "rtsp://USER:PASSWORD@CAMERA_IP:554/stream1"
+    frame_id: "fixed_wifi_monitor_cam"
     image_topic: "/fixed_camera/image_raw"
     camera_info_topic: "/fixed_camera/camera_info"
     status_topic: "/fixed_camera/status"

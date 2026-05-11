@@ -32,8 +32,24 @@ tools/      安装、测试、日志收集等项目脚本
 
 ## 当前优先级
 
-1. 固化仓库结构、README 和每日记录模板。
-2. 建立 RDK X5 远程登录与环境验证记录。
-3. 建立 STM32 串口回显与 PWM 空载工程。
-4. 定义 RDK-STM32 UART 协议草案。
-5. 整理采购下单表、到货验收表和接线记录模板。
+1. 在 RDK X5 上实测 WiFi 固定摄像头 RTSP 输入，记录 IP、码流、分辨率、帧率和截图。
+2. 在 RDK X5 上编译并启动 `perception_camera`，确认 `/fixed_camera/image_raw` 稳定发布。
+3. 在 STM32 CubeMX 工程中接入麦轮驱动回调，实测 MDDS20 四轮方向。
+4. 完成 RDK-STM32 UART 协议实现和实板互测。
+5. 每次真实硬件测试都补充 `docs/validation/` 记录。
+
+## 当前已实现
+
+- STM32 麦轮底盘驱动：`stm32/firmware/Core/Inc/mecanum_drive.h`、`stm32/firmware/Core/Src/mecanum_drive.c`。
+- 固定监控摄像头接入：`rdk_x5/ros2_ws/src/perception_camera/`。
+- WiFi/RTSP 固定摄像头方案：`docs/hardware/wifi_camera.md`。
+- 摄像头链路检测脚本：`rdk_x5/scripts/check_wifi_camera.sh`。
+- RDK 固定摄像头启动脚本：`rdk_x5/scripts/run_fixed_camera.sh`。
+
+RDK 上的 WiFi 摄像头启动示例：
+
+```bash
+./tools/setup_rdk.sh
+CAMERA_URL=rtsp://USER:PASSWORD@CAMERA_IP:554/stream1 ./rdk_x5/scripts/check_wifi_camera.sh
+SOURCE_TYPE=opencv SOURCE_URI=rtsp://USER:PASSWORD@CAMERA_IP:554/stream1 ./rdk_x5/scripts/run_fixed_camera.sh
+```

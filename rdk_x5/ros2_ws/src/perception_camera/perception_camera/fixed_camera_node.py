@@ -27,6 +27,9 @@ class FixedCameraNode(Node):
         self.declare_parameter("height", 720)
         self.declare_parameter("fps", 15.0)
         self.declare_parameter("reconnect_sec", 2.0)
+        self.declare_parameter("rtsp_transport", "tcp")
+        self.declare_parameter("open_timeout_ms", 5000)
+        self.declare_parameter("read_timeout_ms", 5000)
         self.declare_parameter("loop_file", True)
         self.declare_parameter("publish_camera_info", True)
         self.declare_parameter("snapshot_dir", "")
@@ -38,6 +41,9 @@ class FixedCameraNode(Node):
         self.height = int(self.get_parameter("height").value)
         self.fps = max(float(self.get_parameter("fps").value), 0.1)
         self.reconnect_sec = max(float(self.get_parameter("reconnect_sec").value), 0.5)
+        self.rtsp_transport = str(self.get_parameter("rtsp_transport").value)
+        self.open_timeout_ms = int(self.get_parameter("open_timeout_ms").value)
+        self.read_timeout_ms = int(self.get_parameter("read_timeout_ms").value)
         self.loop_file = bool(self.get_parameter("loop_file").value)
         self.publish_camera_info = bool(self.get_parameter("publish_camera_info").value)
         self.snapshot_dir = str(self.get_parameter("snapshot_dir").value)
@@ -98,8 +104,13 @@ class FixedCameraNode(Node):
             self.cap = None
 
         source: Union[int, str] = self._opencv_source(self.source_uri)
+        self._configure_capture_options()
         cap = cv2.VideoCapture(source)
 
+        if self.open_timeout_ms > 0 and hasattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC"):
+            cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, float(self.open_timeout_ms))
+        if self.read_timeout_ms > 0 and hasattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC"):
+            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, float(self.read_timeout_ms))
         if self.width > 0:
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, float(self.width))
         if self.height > 0:
@@ -120,6 +131,25 @@ class FixedCameraNode(Node):
         if source_uri.isdigit():
             return int(source_uri)
         return source_uri
+
+    def _configure_capture_options(self) -> None:
+        if not self.source_uri.lower().startswith("rtsp://"):
+            return
+
+        options = []
+        if self.rtsp_transport:
+            options.extend(["rtsp_transport", self.rtsp_transport])
+        if self.open_timeout_ms > 0:
+            options.extend(["stimeout", str(self.open_timeout_ms * 1000)])
+
+        if not options:
+            return
+
+        pairs = []
+        for index in range(0, len(options), 2):
+            pairs.append(f"{options[index]};{options[index + 1]}")
+
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "|".join(pairs)
 
     def _tick(self) -> None:
         frame = self._read_frame()

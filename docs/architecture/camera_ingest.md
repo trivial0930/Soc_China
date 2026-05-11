@@ -23,10 +23,20 @@
 
 ## 推荐链路
 
-1. 真实固定监控或网络摄像头优先使用 `source_type=opencv` + RTSP 地址。
+1. 真实固定监控或网络摄像头优先使用 WiFi/以太网 + `source_type=opencv` + RTSP 地址。
 2. 临时 USB 摄像头可以使用 RDK 官方 `hobot_usb_cam`，即 `source_type=usb`。
 3. RDK MIPI 摄像头用于机器人本体视觉或桌面验收时使用 `source_type=mipi`。
 4. 无硬件时用本地视频或图片目录模拟固定监控输入。
+
+## WiFi 视频链路
+
+固定摄像头和 RDK X5 可以接入同一个 2.4GHz/5GHz WiFi 网络，摄像头提供 RTSP/HTTP 码流，RDK X5 拉流后统一发布 `/fixed_camera/image_raw`。WiFi 下 RTSP 默认使用 TCP，减少丢包导致的花屏。
+
+```text
+Fixed Camera -> WiFi Router/AP -> RDK X5 -> perception_camera -> ROS2 topics
+```
+
+现场需要记录摄像头 IP、RDK IP、码流 URL、分辨率、帧率和码率。真实密码不提交到仓库。
 
 ## 验证标准
 
