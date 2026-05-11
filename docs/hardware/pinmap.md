@@ -11,6 +11,7 @@
 | GND | STM32 GND | 共地 | TBD | 待确认 | 必须共地 |
 | MIPI CSI | RDK Camera | 主视觉 | TBD | 待确认 | 注意排线方向 |
 | USB | RPLIDAR A2 | 雷达 | TBD | 待确认 | 如保留 |
+| USB/ETH/Wi-Fi | Fixed Monitor Camera | 固定监控输入 | TBD | 待确认 | USB 用 `/dev/video*`，网络摄像头记录 RTSP/HTTP 地址 |
 | I2C | PCA9685 | 云台舵机控制 | TBD | 待确认 | 推荐方案 |
 | SPI/I2C | Thermal-44/90 | 热成像 | TBD | 待确认 | 按模块要求供电 |
 
