@@ -22,6 +22,11 @@ rdk_x5/ros2_ws/log/
 stm32/firmware/build/
 stm32/firmware/Debug/
 stm32/firmware/Release/
+**/Debug/
+**/Release/
+**/build/
+Core_Before_Modified/
+stm32/firmware/stm32_motion_controller_CubeMX/
 *.elf
 *.hex
 *.bin
@@ -32,6 +37,7 @@ stm32/firmware/Release/
 # Runtime logs and captures
 logs/
 captures/
+.tmp/
 *.log
 
 # Large local media/model files

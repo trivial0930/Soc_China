@@ -169,6 +169,90 @@ tools/
 
 结果：Python 语法检查和 shell 语法检查通过。
 
+## 2026-05-12
+
+### ab3d098 - feat(stm32): add uart protocol controller
+
+上传时间：2026-05-12 09:10:56 +08:00
+
+结构：
+
+```text
+docs/
+  protocols/
+    rdk_stm32_uart.md
+    rdk_stm32_uart_execution_plan.md
+rdk_x5/
+  scripts/
+    uart_protocol_test.py
+    uart_send_test.py
+shared/
+  protocol/
+    rdk_stm32_frame.md
+    rdk_stm32_uart.py
+sim/
+  stm32_simulator/
+    README.md
+    serial_simulator.py
+stm32/
+  docs/
+    uart_setup.md
+  firmware/
+    stm32_motion_controller/
+tests/
+  test_rdk_stm32_uart.py
+  test_stm32_c_modules.py
+  test_stm32_simulator.py
+tools/
+  run_smoke_test.sh
+```
+
+内容：
+
+- 新增 RDK X5 与 STM32F411CEU6 的 UART 通信协议实现。
+- 新增 Python 参考协议栈，支持组帧、解析、CRC16 校验和 dry-run 发送测试。
+- 新增 STM32 侧协议模块和 STM32CubeMX/CubeIDE 工程目录。
+- 新增 STM32 串口模拟器，用于无硬件时验证 RDK 侧发送与解析逻辑。
+- 更新 smoke test，将 UART 协议自测、发送脚本 dry-run 和 STM32 C 模块编译测试纳入检查。
+- 基于最新 `origin/main` 整理功能分支，保留队友已上传的 STM32 麦轮驱动模块。
+
+验证：
+
+```bash
+./tools/run_smoke_test.sh
+```
+
+结果：8 个单元测试通过，UART 协议自测通过，dry-run 发送测试通过。
+
+### e37f06d - docs: add stm32 uart daily log
+
+上传时间：2026-05-12 09:31:04 +08:00
+
+结构：
+
+```text
+docs/
+  validation/
+    daily/
+      2026-05-11-stm32-uart-code-log.md
+```
+
+内容：
+
+- 新增 STM32 UART 代码修改日志。
+- 记录 RDK X5 与 STM32F411CEU6 UART 协议代码、CubeMX/CubeIDE 状态、RDK 实机测试现象和后续联调计划。
+- 补充仓库同步记录，包括功能分支、冲突处理、`.gitignore` 更新、重复副本清理和 PR 链接。
+- 详细日志见：`docs/validation/daily/2026-05-11-stm32-uart-code-log.md`
+
+验证：
+
+```bash
+git diff --cached --check
+git status --short --branch
+```
+
+结果：Markdown 格式检查通过，提交后本地分支与远端功能分支一致。
+
 ## 后续记录模板
 
 ### COMMIT_HASH - COMMIT_TITLE
