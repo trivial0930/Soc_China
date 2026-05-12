@@ -289,6 +289,134 @@ tests/
 
 结果：9 个单元测试通过，UART 协议自测通过，dry-run 发送测试通过。
 
+### 4815b59 - docs: add stm32 uart mecanum integration design
+
+上传时间：2026-05-12 21:12:10 +08:00
+
+结构：
+
+```text
+docs/
+  superpowers/
+    specs/
+      2026-05-12-rdk-stm32-mecanum-uart-integration-design.md
+```
+
+内容：
+
+- 新增 RDK X5 通过 UART 控制 STM32 麦克纳姆底盘的软件链路设计。
+- 明确采用“先打通软件链路，暂不写死 PWM/DIR 引脚”的方案。
+- 划分 UART 协议层、应用调度层、麦轮驱动层和硬件输出层。
+- 说明当前阶段 `app_write_motor()` 只记录四轮命令，后续确认电机驱动和 pinmap 后再接真实 TIM/GPIO 输出。
+
+验证：
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+结果：设计前基线测试通过。
+
+### 2e38398 - chore: ignore local worktrees
+
+上传时间：2026-05-12 21:17:24 +08:00
+
+结构：
+
+```text
+.gitignore
+```
+
+内容：
+
+- 更新 `.gitignore`，忽略本地 `.worktrees/` 隔离工作树目录。
+- 避免后续使用 Git worktree 开发时把本地临时工作目录误加入仓库。
+
+验证：
+
+```bash
+git status --short --branch
+```
+
+结果：本地隔离 worktree 未进入提交范围。
+
+### d49d5da - feat(stm32): connect uart commands to mecanum drive
+
+上传时间：2026-05-12 21:29:22 +08:00
+
+结构：
+
+```text
+docs/
+  superpowers/
+    plans/
+      2026-05-12-rdk-stm32-mecanum-uart-integration.md
+stm32/
+  firmware/
+    stm32_motion_controller/
+      Core/
+        Inc/
+          mecanum_drive.h
+        Src/
+          main.c
+          mecanum_drive.c
+tests/
+  test_stm32_c_modules.py
+  test_stm32_main_uart_integration.py
+```
+
+内容：
+
+- 将 `mecanum_drive.c/h` 加入 STM32CubeIDE 工程目录。
+- 修改 STM32 `main.c`，使 `CMD_VEL` 进入麦克纳姆底盘控制链路。
+- 将 `vx_mm_s`、`vy_mm_s`、`wz_mrad_s` 转换为麦轮模块使用的 `m/s` 和 `rad/s`。
+- 在 `STOP`、`IDLE`、命令超时、心跳超时和急停状态下统一触发停车。
+- 当前阶段不输出真实 PWM/DIR，只通过 `app_write_motor()` 记录四轮控制命令。
+- 新增 host-side C 编译测试和 `main.c` 文本集成检查，防止后续 CubeMX 重生成时丢失关键集成点。
+
+验证：
+
+```bash
+python3 -m unittest discover -s tests
+/Applications/STM32CubeIDE.app/Contents/MacOS/STM32CubeIDE \
+  --launcher.suppressErrors \
+  -nosplash \
+  -application org.eclipse.cdt.managedbuilder.core.headlessbuild \
+  -data /Users/sthefirst/Desktop/Soc_China/.tmp/stm32cubeide_headless_workspace \
+  -import /Users/sthefirst/Desktop/Soc_China/stm32/firmware/stm32_motion_controller \
+  -cleanBuild stm32_motion_controller/Debug
+```
+
+结果：10 个单元测试通过；STM32CubeIDE headless build 结果为 `0 errors, 0 warnings`。
+
+### 24d9716 - docs: add stm32 uart mecanum daily log
+
+上传时间：2026-05-12 22:22:36 +08:00
+
+结构：
+
+```text
+docs/
+  validation/
+    daily/
+      2026-05-12-stm32-uart-mecanum-integration-log.md
+```
+
+内容：
+
+- 新增 2026-05-12 STM32 UART 与麦轮底盘集成详细日志。
+- 记录方案选择、涉及文件、STM32 主循环集成摘要、RDK 串口 `/dev/ttyS1` 确认、CubeIDE 构建修复和后续计划。
+- 记录 `* 2.c`、`* 2.h` 等重复副本导致 CubeIDE `multiple definition` 的原因和处理方式。
+- 详细日志见：`docs/validation/daily/2026-05-12-stm32-uart-mecanum-integration-log.md`
+
+验证：
+
+```bash
+git diff --cached --check
+```
+
+结果：Markdown 格式检查通过。
+
 ## 后续记录模板
 
 ### COMMIT_HASH - COMMIT_TITLE
