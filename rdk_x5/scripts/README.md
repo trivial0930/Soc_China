@@ -21,3 +21,25 @@ SOURCE_TYPE=mipi ./rdk_x5/scripts/run_fixed_camera.sh
 ```
 
 放 RDK X5 上直接运行的辅助脚本，例如相机采集、日志打包、环境检查。
+
+## UART 调试
+
+无硬件协议自检：
+
+```bash
+python3 rdk_x5/scripts/uart_protocol_test.py
+python3 rdk_x5/scripts/uart_send_test.py --dry-run --mode manual --vx 50
+```
+
+真实串口或模拟器联调：
+
+```bash
+python3 rdk_x5/scripts/uart_protocol_test.py --port /dev/ttyUSB0
+python3 rdk_x5/scripts/uart_send_test.py --port /dev/ttyUSB0 --duration 10 --mode manual --vx 50
+```
+
+依赖：
+
+```bash
+python3 -m pip install pyserial
+```
