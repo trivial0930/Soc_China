@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "rdk_stm32_uart.h"
 
 /* USER CODE END Includes */
 
@@ -31,6 +32,15 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define APP_STATUS_PERIOD_MS 100u
+#define APP_CMD_TIMEOUT_MS 500u
+#define APP_HEARTBEAT_TIMEOUT_MS 2000u
+#define APP_BATTERY_MV 12000u
+#define APP_FAULT_NONE 0x0000u
+#define APP_FAULT_ESTOP 0x0001u
+#define APP_FAULT_HEARTBEAT_TIMEOUT 0x0002u
+#define APP_FAULT_CMD_TIMEOUT 0x0003u
+#define APP_FAULT_CRC_ERROR_LIMIT 0x0004u
 
 /* USER CODE END PD */
 
@@ -43,6 +53,17 @@
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
+static rdk_parser_t uart_parser;
+static uint8_t uart_rx_byte;
+static uint8_t uart_tx_seq;
+static volatile uint8_t app_mode = RDK_MODE_IDLE;
+static volatile uint8_t app_estop;
+static volatile uint16_t app_fault_code = APP_FAULT_NONE;
+static volatile uint8_t app_last_cmd_seq;
+static volatile uint8_t app_comm_state = RDK_COMM_OK;
+static volatile uint32_t app_last_cmd_ms;
+static volatile uint32_t app_last_heartbeat_ms;
+static uint32_t app_last_status_ms;
 
 /* USER CODE END PV */
 
@@ -51,6 +72,13 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
+static void app_uart_start(void);
+static void app_tick(void);
+static void app_update_comm_state(uint32_t now_ms);
+static void dispatch_frame(const rdk_frame_t *frame);
+static void send_ack(uint8_t ack_type, uint8_t ack_seq, uint8_t result);
+static void send_status(void);
+static HAL_StatusTypeDef send_protocol_frame(uint8_t type, const uint8_t *payload, uint8_t payload_len);
 
 /* USER CODE END PFP */
 
@@ -90,6 +118,7 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  app_uart_start();
 
   /* USER CODE END 2 */
 
@@ -100,6 +129,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    app_tick();
   }
   /* USER CODE END 3 */
 }
@@ -215,6 +245,201 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+static void app_uart_start(void)
+{
+  uint32_t now = HAL_GetTick();
+
+  rdk_parser_init(&uart_parser);
+  app_last_cmd_ms = now;
+  app_last_heartbeat_ms = now;
+  app_last_status_ms = now;
+  (void)HAL_UART_Receive_IT(&huart1, &uart_rx_byte, 1);
+  send_status();
+}
+
+static void app_tick(void)
+{
+  uint32_t now = HAL_GetTick();
+
+  app_update_comm_state(now);
+  if ((uint32_t)(now - app_last_status_ms) >= APP_STATUS_PERIOD_MS)
+  {
+    app_last_status_ms = now;
+    send_status();
+  }
+}
+
+static void app_update_comm_state(uint32_t now_ms)
+{
+  if (app_estop != 0u)
+  {
+    app_comm_state = RDK_COMM_OK;
+    app_fault_code = APP_FAULT_ESTOP;
+  }
+  else if ((uint32_t)(now_ms - app_last_heartbeat_ms) > APP_HEARTBEAT_TIMEOUT_MS)
+  {
+    app_comm_state = RDK_COMM_HEARTBEAT_TIMEOUT;
+    app_fault_code = APP_FAULT_HEARTBEAT_TIMEOUT;
+  }
+  else if ((uint32_t)(now_ms - app_last_cmd_ms) > APP_CMD_TIMEOUT_MS)
+  {
+    app_comm_state = RDK_COMM_CMD_TIMEOUT;
+    app_fault_code = APP_FAULT_CMD_TIMEOUT;
+  }
+  else
+  {
+    app_comm_state = RDK_COMM_OK;
+    app_fault_code = APP_FAULT_NONE;
+  }
+}
+
+static void dispatch_frame(const rdk_frame_t *frame)
+{
+  uint8_t result = RDK_ACK_OK;
+  uint32_t uptime_ms = 0u;
+  rdk_cmd_vel_t cmd;
+
+  switch (frame->type)
+  {
+    case RDK_FRAME_HEARTBEAT:
+      if (rdk_unpack_heartbeat(frame->payload, frame->len, &uptime_ms) == 0)
+      {
+        (void)uptime_ms;
+        app_last_heartbeat_ms = HAL_GetTick();
+      }
+      else
+      {
+        result = RDK_ACK_LEN_ERROR;
+      }
+      break;
+
+    case RDK_FRAME_CMD_VEL:
+      if (rdk_unpack_cmd_vel(frame->payload, frame->len, &cmd) != 0)
+      {
+        result = RDK_ACK_LEN_ERROR;
+      }
+      else if (app_estop != 0u)
+      {
+        result = RDK_ACK_ESTOP_ACTIVE;
+      }
+      else if (app_mode == RDK_MODE_IDLE)
+      {
+        result = RDK_ACK_MODE_NOT_ALLOWED;
+      }
+      else
+      {
+        (void)cmd;
+        app_last_cmd_ms = HAL_GetTick();
+        app_last_cmd_seq = frame->seq;
+      }
+      break;
+
+    case RDK_FRAME_SET_MODE:
+      if (frame->len != 1u)
+      {
+        result = RDK_ACK_LEN_ERROR;
+      }
+      else if (frame->payload[0] > RDK_MODE_TEST)
+      {
+        result = RDK_ACK_MODE_NOT_ALLOWED;
+      }
+      else
+      {
+        app_mode = frame->payload[0];
+      }
+      break;
+
+    case RDK_FRAME_STOP:
+      if (frame->len != 1u)
+      {
+        result = RDK_ACK_LEN_ERROR;
+      }
+      else
+      {
+        app_mode = RDK_MODE_IDLE;
+        app_last_cmd_seq = frame->seq;
+      }
+      break;
+
+    default:
+      result = RDK_ACK_UNSUPPORTED_TYPE;
+      break;
+  }
+
+  send_ack(frame->type, frame->seq, result);
+}
+
+static HAL_StatusTypeDef send_protocol_frame(uint8_t type, const uint8_t *payload, uint8_t payload_len)
+{
+  uint8_t raw[RDK_MAX_FRAME_LEN];
+  int frame_len = rdk_encode_frame(type, uart_tx_seq, payload, payload_len, raw, sizeof(raw));
+
+  if (frame_len <= 0)
+  {
+    return HAL_ERROR;
+  }
+
+  uart_tx_seq = (uint8_t)(uart_tx_seq + 1u);
+  return HAL_UART_Transmit(&huart1, raw, (uint16_t)frame_len, 20u);
+}
+
+static void send_ack(uint8_t ack_type, uint8_t ack_seq, uint8_t result)
+{
+  uint8_t payload[3];
+  rdk_ack_t ack = {
+    .ack_type = ack_type,
+    .ack_seq = ack_seq,
+    .result = result,
+  };
+
+  rdk_pack_ack(payload, &ack);
+  (void)send_protocol_frame(RDK_FRAME_ACK, payload, sizeof(payload));
+}
+
+static void send_status(void)
+{
+  uint8_t payload[8];
+  rdk_status_t status = {
+    .mode = app_mode,
+    .estop = app_estop,
+    .fault_code = app_fault_code,
+    .battery_mv = APP_BATTERY_MV,
+    .last_cmd_seq = app_last_cmd_seq,
+    .comm_state = app_comm_state,
+  };
+
+  rdk_pack_status(payload, &status);
+  (void)send_protocol_frame(RDK_FRAME_STATUS, payload, sizeof(payload));
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART1)
+  {
+    rdk_frame_t frame;
+    rdk_parse_result_t result = rdk_parser_feed(&uart_parser, uart_rx_byte, &frame);
+
+    if (result == RDK_PARSE_FRAME_READY)
+    {
+      dispatch_frame(&frame);
+    }
+    else if (result == RDK_PARSE_CRC_ERROR)
+    {
+      app_comm_state = RDK_COMM_CRC_ERROR_LIMIT;
+      app_fault_code = APP_FAULT_CRC_ERROR_LIMIT;
+    }
+
+    (void)HAL_UART_Receive_IT(&huart1, &uart_rx_byte, 1);
+  }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART1)
+  {
+    (void)HAL_UART_Receive_IT(&huart1, &uart_rx_byte, 1);
+  }
+}
 
 /* USER CODE END 4 */
 
