@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "mecanum_drive.h"
 #include "rdk_stm32_uart.h"
 
 /* USER CODE END Includes */
@@ -41,6 +42,11 @@
 #define APP_FAULT_HEARTBEAT_TIMEOUT 0x0002u
 #define APP_FAULT_CMD_TIMEOUT 0x0003u
 #define APP_FAULT_CRC_ERROR_LIMIT 0x0004u
+#define APP_CHASSIS_WHEEL_RADIUS_M 0.05f
+#define APP_CHASSIS_HALF_LENGTH_M 0.12f
+#define APP_CHASSIS_HALF_WIDTH_M 0.10f
+#define APP_CHASSIS_MAX_WHEEL_RADPS 30.0f
+#define APP_CHASSIS_PWM_MAX 999u
 
 /* USER CODE END PD */
 
@@ -64,6 +70,8 @@ static volatile uint8_t app_comm_state = RDK_COMM_OK;
 static volatile uint32_t app_last_cmd_ms;
 static volatile uint32_t app_last_heartbeat_ms;
 static uint32_t app_last_status_ms;
+static MecanumDrive app_chassis;
+static volatile MecanumMotorCommand app_last_motor_command[MECANUM_WHEEL_COUNT];
 
 /* USER CODE END PV */
 
@@ -79,6 +87,10 @@ static void dispatch_frame(const rdk_frame_t *frame);
 static void send_ack(uint8_t ack_type, uint8_t ack_seq, uint8_t result);
 static void send_status(void);
 static HAL_StatusTypeDef send_protocol_frame(uint8_t type, const uint8_t *payload, uint8_t payload_len);
+static void app_chassis_init(void);
+static void app_write_motor(MecanumWheelId wheel, const MecanumMotorCommand *command, void *user);
+static void app_cmd_to_chassis(const rdk_cmd_vel_t *cmd);
+static void app_chassis_stop(void);
 
 /* USER CODE END PFP */
 
@@ -118,6 +130,7 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  app_chassis_init();
   app_uart_start();
 
   /* USER CODE END 2 */
@@ -261,6 +274,7 @@ static void app_tick(void)
 {
   uint32_t now = HAL_GetTick();
 
+  MecanumDrive_UpdateTimeout(&app_chassis, now);
   app_update_comm_state(now);
   if ((uint32_t)(now - app_last_status_ms) >= APP_STATUS_PERIOD_MS)
   {
@@ -275,16 +289,19 @@ static void app_update_comm_state(uint32_t now_ms)
   {
     app_comm_state = RDK_COMM_OK;
     app_fault_code = APP_FAULT_ESTOP;
+    app_chassis_stop();
   }
   else if ((uint32_t)(now_ms - app_last_heartbeat_ms) > APP_HEARTBEAT_TIMEOUT_MS)
   {
     app_comm_state = RDK_COMM_HEARTBEAT_TIMEOUT;
     app_fault_code = APP_FAULT_HEARTBEAT_TIMEOUT;
+    app_chassis_stop();
   }
   else if ((uint32_t)(now_ms - app_last_cmd_ms) > APP_CMD_TIMEOUT_MS)
   {
     app_comm_state = RDK_COMM_CMD_TIMEOUT;
     app_fault_code = APP_FAULT_CMD_TIMEOUT;
+    app_chassis_stop();
   }
   else
   {
@@ -321,14 +338,16 @@ static void dispatch_frame(const rdk_frame_t *frame)
       else if (app_estop != 0u)
       {
         result = RDK_ACK_ESTOP_ACTIVE;
+        app_chassis_stop();
       }
       else if (app_mode == RDK_MODE_IDLE)
       {
         result = RDK_ACK_MODE_NOT_ALLOWED;
+        app_chassis_stop();
       }
       else
       {
-        (void)cmd;
+        app_cmd_to_chassis(&cmd);
         app_last_cmd_ms = HAL_GetTick();
         app_last_cmd_seq = frame->seq;
       }
@@ -346,6 +365,10 @@ static void dispatch_frame(const rdk_frame_t *frame)
       else
       {
         app_mode = frame->payload[0];
+        if (app_mode == RDK_MODE_IDLE)
+        {
+          app_chassis_stop();
+        }
       }
       break;
 
@@ -358,6 +381,7 @@ static void dispatch_frame(const rdk_frame_t *frame)
       {
         app_mode = RDK_MODE_IDLE;
         app_last_cmd_seq = frame->seq;
+        app_chassis_stop();
       }
       break;
 
@@ -367,6 +391,54 @@ static void dispatch_frame(const rdk_frame_t *frame)
   }
 
   send_ack(frame->type, frame->seq, result);
+}
+
+static void app_chassis_init(void)
+{
+  MecanumDriveConfig cfg;
+
+  MecanumDrive_DefaultConfig(&cfg);
+  cfg.wheel_radius_m = APP_CHASSIS_WHEEL_RADIUS_M;
+  cfg.half_length_m = APP_CHASSIS_HALF_LENGTH_M;
+  cfg.half_width_m = APP_CHASSIS_HALF_WIDTH_M;
+  cfg.max_wheel_radps = APP_CHASSIS_MAX_WHEEL_RADPS;
+  cfg.pwm_max = APP_CHASSIS_PWM_MAX;
+  cfg.command_timeout_ms = APP_CMD_TIMEOUT_MS;
+  cfg.write_motor = app_write_motor;
+  cfg.user = 0;
+
+  (void)MecanumDrive_Init(&app_chassis, &cfg);
+}
+
+static void app_write_motor(MecanumWheelId wheel, const MecanumMotorCommand *command, void *user)
+{
+  (void)user;
+
+  if ((wheel >= MECANUM_WHEEL_COUNT) || (command == 0))
+  {
+    return;
+  }
+
+  app_last_motor_command[wheel] = *command;
+}
+
+static void app_cmd_to_chassis(const rdk_cmd_vel_t *cmd)
+{
+  if (cmd == 0)
+  {
+    return;
+  }
+
+  MecanumDrive_SetVelocity(&app_chassis,
+                           ((float)cmd->vx_mm_s) / 1000.0f,
+                           ((float)cmd->vy_mm_s) / 1000.0f,
+                           ((float)cmd->wz_mrad_s) / 1000.0f,
+                           HAL_GetTick());
+}
+
+static void app_chassis_stop(void)
+{
+  MecanumDrive_Stop(&app_chassis);
 }
 
 static HAL_StatusTypeDef send_protocol_frame(uint8_t type, const uint8_t *payload, uint8_t payload_len)

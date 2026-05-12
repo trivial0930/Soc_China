@@ -12,8 +12,16 @@ class Stm32MainUartIntegrationTest(unittest.TestCase):
 
         required_snippets = [
             '#include "rdk_stm32_uart.h"',
+            '#include "mecanum_drive.h"',
             "rdk_parser_init(&uart_parser)",
             "HAL_UART_Receive_IT(&huart1, &uart_rx_byte, 1)",
+            "static MecanumDrive app_chassis",
+            "app_chassis_init()",
+            "MecanumDrive_SetVelocity(&app_chassis,",
+            "MecanumDrive_UpdateTimeout(&app_chassis, now)",
+            "MecanumDrive_Stop(&app_chassis)",
+            "app_cmd_to_chassis(&cmd)",
+            "app_write_motor",
             "void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)",
             "rdk_parser_feed(&uart_parser, uart_rx_byte, &frame)",
             "send_ack(frame->type, frame->seq,",

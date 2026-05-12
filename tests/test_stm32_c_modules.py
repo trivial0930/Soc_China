@@ -154,5 +154,64 @@ class Stm32CModuleTest(unittest.TestCase):
                 "stm32/firmware/stm32_motion_controller/Core/Src/motion_controller.c",
             ],
         )
+
+    @unittest.skipIf(not shutil_which("gcc"), "gcc is required for C module tests")
+    def test_mecanum_drive_project_module_velocity_stop_and_timeout(self):
+        self.compile_and_run(
+            r"""
+            #include <assert.h>
+            #include <stdint.h>
+            #include "mecanum_drive.h"
+
+            static MecanumMotorCommand applied[MECANUM_WHEEL_COUNT];
+            static uint8_t apply_count;
+
+            static void capture_motor(MecanumWheelId wheel, const MecanumMotorCommand *command, void *user) {
+                (void)user;
+                assert(wheel < MECANUM_WHEEL_COUNT);
+                assert(command != 0);
+                applied[wheel] = *command;
+                apply_count++;
+            }
+
+            static int all_pwm_zero(void) {
+                return applied[MECANUM_WHEEL_LF].pwm == 0u
+                    && applied[MECANUM_WHEEL_RF].pwm == 0u
+                    && applied[MECANUM_WHEEL_LR].pwm == 0u
+                    && applied[MECANUM_WHEEL_RR].pwm == 0u;
+            }
+
+            int main(void) {
+                MecanumDriveConfig config;
+                MecanumDrive chassis;
+
+                MecanumDrive_DefaultConfig(&config);
+                config.write_motor = capture_motor;
+                config.pwm_max = 1000u;
+                config.command_timeout_ms = 500u;
+
+                assert(MecanumDrive_Init(&chassis, &config) == 1u);
+                assert(all_pwm_zero());
+
+                MecanumDrive_SetVelocity(&chassis, 0.05f, 0.0f, 0.0f, 10u);
+                assert(chassis.timed_out == 0u);
+                assert(applied[MECANUM_WHEEL_LF].pwm > 0u);
+                assert(applied[MECANUM_WHEEL_RF].pwm > 0u);
+                assert(applied[MECANUM_WHEEL_LR].pwm > 0u);
+                assert(applied[MECANUM_WHEEL_RR].pwm > 0u);
+
+                MecanumDrive_Stop(&chassis);
+                assert(all_pwm_zero());
+
+                MecanumDrive_SetVelocity(&chassis, 0.05f, 0.0f, 0.0f, 100u);
+                MecanumDrive_UpdateTimeout(&chassis, 600u);
+                assert(chassis.timed_out == 1u);
+                assert(all_pwm_zero());
+                assert(apply_count >= 16u);
+                return 0;
+            }
+            """,
+            ["stm32/firmware/stm32_motion_controller/Core/Src/mecanum_drive.c"],
+        )
 if __name__ == "__main__":
     unittest.main()
