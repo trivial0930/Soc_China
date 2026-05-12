@@ -253,6 +253,42 @@ git status --short --branch
 
 结果：Markdown 格式检查通过，提交后本地分支与远端功能分支一致。
 
+### c212e37 - feat(stm32): integrate uart protocol in main
+
+上传时间：2026-05-12 20:46:37 +08:00
+
+结构：
+
+```text
+stm32/
+  firmware/
+    stm32_motion_controller/
+      Core/
+        Src/
+          main.c
+      stm32_motion_controller.launch
+tests/
+  test_stm32_main_uart_integration.py
+```
+
+内容：
+
+- 在 STM32 `main.c` 中接入 RDK-STM32 UART 协议头文件和解析器。
+- 初始化 USART1 中断接收，使用 `HAL_UART_Receive_IT` 按字节接收 RDK 指令帧。
+- 新增 `HAL_UART_RxCpltCallback`，在收到完整协议帧后分发 `HEARTBEAT`、`CMD_VEL`、`SET_MODE`、`STOP`。
+- 新增 `ACK` 和周期性 `STATUS` 回传，便于 RDK 侧确认 STM32 已响应。
+- 新增通信状态更新逻辑，覆盖命令超时、心跳超时、急停和 CRC 错误状态。
+- 更新 STM32CubeIDE launch 配置。
+- 新增主循环 UART 集成检查测试，避免后续 CubeMX 重生成时遗漏 UART 回调和回传逻辑。
+
+验证：
+
+```bash
+./tools/run_smoke_test.sh
+```
+
+结果：9 个单元测试通过，UART 协议自测通过，dry-run 发送测试通过。
+
 ## 后续记录模板
 
 ### COMMIT_HASH - COMMIT_TITLE
