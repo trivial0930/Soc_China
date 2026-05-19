@@ -417,6 +417,65 @@ git diff --cached --check
 
 结果：Markdown 格式检查通过。
 
+## 2026-05-19
+
+### b637de1 - feat(stm32): add tb6612 motor pwm outputs
+
+上传时间：2026-05-19 22:26:18 +08:00
+
+结构：
+
+```text
+stm32/
+  docs/
+    README.md
+    tb6612_motor_control_integration.md
+  firmware/
+    stm32_motion_controller/
+      Core/
+        Inc/
+          stm32f4xx_hal_conf.h
+        Src/
+          main.c
+          stm32f4xx_hal_msp.c
+      Drivers/
+        STM32F4xx_HAL_Driver/
+          Inc/
+            stm32f4xx_hal_tim.h
+            stm32f4xx_hal_tim_ex.h
+          Src/
+            stm32f4xx_hal_tim.c
+            stm32f4xx_hal_tim_ex.c
+      stm32_motion_controller.ioc
+tests/
+  test_stm32_main_uart_integration.py
+```
+
+内容：
+
+- 为 STM32F411CEU6 新增 TIM3 四路 PWM 输出，用于控制四个麦克纳姆轮。
+- 新增 TB6612 双路电机驱动接线与控制说明文档。
+- 在 `main.c` 中加入电机硬件映射 `AppMotorHw`，将 `LF/RF/LR/RR` 映射到 TIM3 PWM、方向 GPIO 和使能 GPIO。
+- 启动 TIM3 CH1/CH2/CH3/CH4 PWM，并在 `app_write_motor()` 中输出 PWM 占空比、方向 IN1/IN2 和 EN/STBY。
+- 在 CubeMX `.ioc` 与 HAL MSP 中加入 TIM3、PA6/PA7/PB0/PB1 PWM 复用和 PA0-PA5、PB8-PB11 GPIO 输出。
+- 新增 HAL TIM/TIMEx 驱动文件，并开启 `HAL_TIM_MODULE_ENABLED`。
+- 更新测试，检查 TIM3 PWM、GPIO 方向控制和 HAL TIM 驱动是否存在。
+
+验证：
+
+```bash
+./tools/run_smoke_test.sh
+/Applications/STM32CubeIDE.app/Contents/MacOS/STM32CubeIDE \
+  --launcher.suppressErrors \
+  -nosplash \
+  -application org.eclipse.cdt.managedbuilder.core.headlessbuild \
+  -data /Users/sthefirst/Desktop/Soc_China/.tmp/stm32cubeide_headless_workspace \
+  -import /Users/sthefirst/Desktop/Soc_China/stm32/firmware/stm32_motion_controller \
+  -cleanBuild stm32_motion_controller/Debug
+```
+
+结果：11 个单元测试通过；STM32CubeIDE headless build 结果为 `0 errors, 0 warnings`。
+
 ## 后续记录模板
 
 ### COMMIT_HASH - COMMIT_TITLE
