@@ -1,34 +1,56 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 
-DEFAULT_GPIO_PIN_MAP = {
-    11: 17,
-    13: 27,
-}
+class _NoopGpio:
+    BOARD = "BOARD"
+    OUT = "OUT"
+    HIGH = 1
+    LOW = 0
+
+    def setwarnings(self, enabled: bool) -> None:
+        pass
+
+    def setmode(self, mode) -> None:
+        pass
+
+    def setup(self, pin: int, mode, initial=0) -> None:
+        pass
+
+    def output(self, pin: int, value: int) -> None:
+        pass
+
+    def cleanup(self, pin: int | None = None) -> None:
+        pass
+
+
+def load_hobot_gpio():
+    try:
+        import Hobot.GPIO as GPIO
+    except ImportError:
+        GPIO = _NoopGpio()
+    return GPIO
 
 
 @dataclass
-class SysfsGpioLine:
-    gpio: int
-    root: Path = Path("/sys/class/gpio")
+class HobotGpioLine:
+    pin: int
     active_high: bool = True
+    gpio_module = None
 
-    @property
-    def gpio_dir(self) -> Path:
-        return self.root / f"gpio{self.gpio}"
+    def __post_init__(self) -> None:
+        if self.gpio_module is None:
+            self.gpio_module = load_hobot_gpio()
 
     def setup_output(self, initial: bool = False) -> None:
-        if not self.gpio_dir.exists():
-            (self.root / "export").write_text(str(self.gpio))
-        (self.gpio_dir / "direction").write_text("out")
-        self.write(initial)
+        self.gpio_module.setwarnings(False)
+        self.gpio_module.setmode(self.gpio_module.BOARD)
+        initial_value = self._logical_value(initial)
+        self.gpio_module.setup(self.pin, self.gpio_module.OUT, initial=initial_value)
 
     def write(self, enabled: bool) -> None:
-        logical = enabled if self.active_high else not enabled
-        (self.gpio_dir / "value").write_text("1" if logical else "0")
+        self.gpio_module.output(self.pin, self._logical_value(enabled))
 
     def enable(self) -> None:
         self.write(True)
@@ -36,10 +58,13 @@ class SysfsGpioLine:
     def disable(self) -> None:
         self.write(False)
 
+    def cleanup(self) -> None:
+        self.gpio_module.cleanup(self.pin)
 
-def gpio_line_from_pin(pin: int, root: Path = Path("/sys/class/gpio")) -> SysfsGpioLine:
-    try:
-        gpio = DEFAULT_GPIO_PIN_MAP[int(pin)]
-    except KeyError as exc:
-        raise ValueError(f"No default GPIO mapping for RDK X5 physical pin {pin}") from exc
-    return SysfsGpioLine(gpio=gpio, root=root)
+    def _logical_value(self, enabled: bool) -> int:
+        logical = enabled if self.active_high else not enabled
+        return self.gpio_module.HIGH if logical else self.gpio_module.LOW
+
+
+def gpio_line_from_pin(pin: int) -> HobotGpioLine:
+    return HobotGpioLine(pin=int(pin))
