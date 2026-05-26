@@ -22,6 +22,22 @@ SOURCE_TYPE=mipi ./rdk_x5/scripts/run_fixed_camera.sh
 
 放 RDK X5 上直接运行的辅助脚本，例如相机采集、日志打包、环境检查。
 
+## 云台
+
+构建后启动二自由度云台控制节点：
+
+```bash
+./tools/setup_rdk.sh
+./rdk_x5/scripts/run_gimbal_controller.sh
+```
+
+如需指定配置：
+
+```bash
+CONFIG_FILE=/home/sunrise/Soc_China/rdk_x5/ros2_ws/src/gimbal_laser/config/gimbal.yaml \
+./rdk_x5/scripts/run_gimbal_controller.sh
+```
+
 ## UART 调试
 
 无硬件协议自检：

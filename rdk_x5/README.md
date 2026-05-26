@@ -36,6 +36,9 @@ RDK 侧提交必须写清楚运行命令和依赖版本。
 
 # 启动固定监控 RTSP/HTTP/本地视频/图片/备用 UVC 输入
 SOURCE_TYPE=opencv SOURCE_URI=/dev/video0 ./rdk_x5/scripts/run_fixed_camera.sh
+
+# 启动二自由度云台控制节点
+./rdk_x5/scripts/run_gimbal_controller.sh
 ```
 
 RTSP 固定监控摄像头示例：

@@ -1,0 +1,30 @@
+gimbal_controller_node:
+  ros__parameters:
+    pan_i2c_bus: 5
+    pan_encoder_address: 54
+    pan_zero_deg: 0.0
+    pan_min_deg: -60.0
+    pan_max_deg: 60.0
+    pan_invert: false
+    pan_pwm_pins: [29, 31, 37]
+    pan_enable_pin: 11
+
+    tilt_i2c_bus: 0
+    tilt_encoder_address: 54
+    tilt_zero_deg: 0.0
+    tilt_min_deg: -30.0
+    tilt_max_deg: 45.0
+    tilt_invert: false
+    tilt_pwm_pins: [24, 32, 33]
+    tilt_enable_pin: 13
+
+    loop_hz: 100.0
+    pwm_frequency_hz: 20000
+    max_duty: 0.1
+    startup_duty: 0.03
+    angle_deadband_deg: 1.0
+    command_timeout_sec: 1.0
+    status_topic: "/gimbal/status"
+    angle_topic: "/gimbal/angle"
+    target_topic: "/gimbal/target_angle"
+    enable_topic: "/gimbal/enable"

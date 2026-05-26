@@ -11,3 +11,4 @@
 已补充：
 
 - `camera_ingest.md`：固定监控摄像头接入 RDK X5 的模块边界、话题和验证标准。
+- `gimbal_control_flow.md`：RDK X5 二自由度云台控制的硬件假设、ROS2 包结构、状态机和联调流程。
