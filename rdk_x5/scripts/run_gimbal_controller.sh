@@ -7,16 +7,22 @@ WS_DIR="$(cd "${SCRIPT_DIR}/../ros2_ws" && pwd)"
 CONFIG_FILE="${CONFIG_FILE:-}"
 
 if [[ -f /opt/tros/humble/setup.bash ]]; then
+  set +u
   source /opt/tros/humble/setup.bash
+  set -u
 elif [[ -f /opt/tros/setup.bash ]]; then
+  set +u
   source /opt/tros/setup.bash
+  set -u
 else
   echo "[gimbal] Cannot find tros.b setup.bash under /opt/tros" >&2
   exit 1
 fi
 
 if [[ -f "${WS_DIR}/install/setup.bash" ]]; then
+  set +u
   source "${WS_DIR}/install/setup.bash"
+  set -u
 else
   echo "[gimbal] Workspace is not built yet. Run:" >&2
   echo "  cd ${WS_DIR}" >&2
