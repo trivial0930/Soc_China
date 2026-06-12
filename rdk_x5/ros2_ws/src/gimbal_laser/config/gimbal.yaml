@@ -2,28 +2,35 @@ gimbal_controller_node:
   ros__parameters:
     pan_i2c_bus: 5
     pan_encoder_address: 54
-    pan_zero_deg: 0.0
+    pan_zero_deg: 47.99          # homing 2026-06-12: 机械中心原始角, 居中归0
     pan_min_deg: -60.0
     pan_max_deg: 60.0
     pan_invert: false
+    pan_pole_pairs: 8            # FOC 标定 2026-06-12 (gimbal_foc_calibrate.py), 原 7 错误
+    pan_phase_offset_deg: 66.0   # 电角度; 闭环实测收敛
     pan_pwm_pins: [29, 31, 37]
-    pan_enable_pin: 11
+    pan_enable_pin: 38
 
-    tilt_i2c_bus: 0
+    tilt_i2c_bus: 1
     tilt_encoder_address: 54
-    tilt_zero_deg: 0.0
+    tilt_zero_deg: -108.28        # homing 2026-06-12: 机械中心原始角, 居中归0
     tilt_min_deg: -30.0
     tilt_max_deg: 45.0
     tilt_invert: false
-    tilt_pwm_pins: [24, 32, 33]
-    tilt_enable_pin: 13
+    tilt_pole_pairs: 7           # FOC 标定 2026-06-12 确认 7
+    tilt_phase_offset_deg: 138.0 # 电角度; 闭环实测收敛
+    tilt_pwm_pins: [18, 28, 27]
+    tilt_enable_pin: 40
 
     loop_hz: 100.0
     pwm_frequency_hz: 20000
-    max_duty: 0.1
-    startup_duty: 0.03
+    max_duty: 0.08
+    startup_duty: 0.022
     angle_deadband_deg: 1.0
-    command_timeout_sec: 1.0
+    command_timeout_sec: 5.0
+    proportional_gain: 0.005
+    target_slew_rate_deg_s: 32.0
+    duty_slew_rate_per_sec: 1.25
     status_topic: "/gimbal/status"
     angle_topic: "/gimbal/angle"
     target_topic: "/gimbal/target_angle"

@@ -36,6 +36,13 @@ if ! python3 -c "import smbus2" >/dev/null 2>&1; then
   exit 1
 fi
 
+if pgrep -x gimbal_controll >/dev/null 2>&1; then
+  echo "[gimbal] controller is already running; refusing to start a duplicate." >&2
+  echo "[gimbal] Stop the existing controller first, or run:" >&2
+  echo "  pgrep -x gimbal_controll | xargs -r kill" >&2
+  exit 0
+fi
+
 echo "[gimbal] starting controller"
 
 if [[ -n "${CONFIG_FILE}" ]]; then

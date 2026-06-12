@@ -96,8 +96,47 @@ class GimbalControllerTest(unittest.TestCase):
         self.assertEqual(status.state, GimbalState.ENABLED_CLOSED_LOOP)
         self.assertTrue(controller.pan.motor.enabled)
         self.assertTrue(controller.tilt.motor.enabled)
-        self.assertTrue(all(abs(duty) <= 0.1 for duty in controller.pan.motor.duties[-1]))
-        self.assertTrue(all(abs(duty) <= 0.1 for duty in controller.tilt.motor.duties[-1]))
+        self.assertTrue(all(0.0 <= duty <= 1.0 for duty in controller.pan.motor.duties[-1]))
+        self.assertTrue(all(0.0 <= duty <= 1.0 for duty in controller.tilt.motor.duties[-1]))
+        self.assertGreater(
+            max(controller.pan.motor.duties[-1]) - min(controller.pan.motor.duties[-1]),
+            0.02,
+        )
+        self.assertGreater(
+            max(controller.tilt.motor.duties[-1]) - min(controller.tilt.motor.duties[-1]),
+            0.02,
+        )
+
+    def test_commanded_target_is_slew_limited(self):
+        controller = build_controller()
+        controller.step(now_sec=0.0)
+        controller.set_target(60.0, 45.0, now_sec=0.0)
+        controller.set_enabled(True, now_sec=0.1)
+
+        status = controller.step(now_sec=0.1)
+
+        self.assertLess(status.commanded_pan_deg, status.target_pan_deg)
+        self.assertLess(status.commanded_tilt_deg, status.target_tilt_deg)
+        self.assertAlmostEqual(status.commanded_pan_deg, 13.2, places=6)
+        self.assertAlmostEqual(status.commanded_tilt_deg, -1.8, places=6)
+
+    def test_angle_slew_uses_shortest_wrapped_path(self):
+        controller = build_controller()
+
+        next_angle = controller._advance_angle(179.0, -179.0, dt=0.1)
+
+        self.assertAlmostEqual(next_angle, -179.0, places=6)
+
+    def test_torque_vector_is_continuous_near_zero_error(self):
+        controller = build_controller()
+        controller.last_pan_deg = 0.0
+
+        positive = controller._duties_for_axis(controller.pan, 1.2)
+        neutral = controller._duties_for_axis(controller.pan, 0.0)
+        negative = controller._duties_for_axis(controller.pan, -1.2)
+
+        self.assertEqual(neutral, (0.5, 0.5, 0.5))
+        self.assertLess(max(abs(a - b) for a, b in zip(positive, negative)), 0.03)
 
     def test_stop_disables_motors_and_zeroes_pwm(self):
         controller = build_controller()
@@ -124,6 +163,29 @@ class GimbalControllerTest(unittest.TestCase):
         self.assertIn("i2c", status.fault)
         self.assertFalse(controller.pan.motor.enabled)
         self.assertFalse(controller.tilt.motor.enabled)
+
+    def test_operator_stop_recovers_from_command_timeout_fault(self):
+        controller = build_controller()
+        controller.step(now_sec=0.0)
+        controller.set_target(20.0, -10.0, now_sec=0.0)
+        controller.set_enabled(True, now_sec=0.1)
+
+        status = controller.step(now_sec=2.0)
+        self.assertEqual(status.state, GimbalState.FAULT)
+        self.assertEqual(status.fault, "command_timeout")
+
+        status = controller.stop("operator_stop")
+
+        self.assertEqual(status.state, GimbalState.IDLE)
+        self.assertEqual(status.fault, "")
+        self.assertFalse(status.enabled)
+
+        controller.set_target(20.0, -10.0, now_sec=2.1)
+        controller.set_enabled(True, now_sec=2.2)
+        status = controller.step(now_sec=2.2)
+
+        self.assertEqual(status.state, GimbalState.ENABLED_CLOSED_LOOP)
+        self.assertTrue(status.enabled)
 
 
 if __name__ == "__main__":

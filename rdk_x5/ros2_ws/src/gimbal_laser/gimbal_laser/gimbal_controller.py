@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol, Sequence
@@ -37,6 +38,8 @@ class AxisConfig:
     min_deg: float
     max_deg: float
     invert: bool = False
+    pole_pairs: int = 7
+    phase_offset_deg: float = 0.0
 
 
 @dataclass
@@ -48,11 +51,13 @@ class AxisIO:
 
 @dataclass(frozen=True)
 class ControlConfig:
-    max_duty: float = 0.1
-    startup_duty: float = 0.03
+    max_duty: float = 0.08
+    startup_duty: float = 0.022
     angle_deadband_deg: float = 1.0
     command_timeout_sec: float = 1.0
-    proportional_gain: float = 0.01
+    proportional_gain: float = 0.005
+    target_slew_rate_deg_s: float = 32.0
+    duty_slew_rate_per_sec: float = 1.25
 
 
 @dataclass(frozen=True)
@@ -62,6 +67,8 @@ class GimbalStatus:
     tilt_deg: float
     target_pan_deg: float
     target_tilt_deg: float
+    commanded_pan_deg: float
+    commanded_tilt_deg: float
     enabled: bool
     clamped: bool = False
     fault: str = ""
@@ -73,6 +80,8 @@ class GimbalStatus:
             "tilt_deg": self.tilt_deg,
             "target_pan_deg": self.target_pan_deg,
             "target_tilt_deg": self.target_tilt_deg,
+            "commanded_pan_deg": self.commanded_pan_deg,
+            "commanded_tilt_deg": self.commanded_tilt_deg,
             "enabled": self.enabled,
             "clamped": self.clamped,
             "fault": self.fault,
@@ -87,10 +96,15 @@ class GimbalController:
         self.state = GimbalState.BOOT
         self.target_pan_deg = 0.0
         self.target_tilt_deg = 0.0
+        self.commanded_pan_deg = 0.0
+        self.commanded_tilt_deg = 0.0
         self.enabled = False
         self.last_command_sec: float | None = None
+        self.last_step_sec: float | None = None
         self.last_pan_deg = 0.0
         self.last_tilt_deg = 0.0
+        self._last_pan_duties = (0.5, 0.5, 0.5)
+        self._last_tilt_duties = (0.5, 0.5, 0.5)
         self.last_clamped = False
         self.fault = ""
         self._safe_outputs()
@@ -103,11 +117,17 @@ class GimbalController:
         return self.status()
 
     def set_enabled(self, enabled: bool, now_sec: float) -> GimbalStatus:
+        was_enabled = self.enabled
         self.enabled = enabled
         self.last_command_sec = now_sec
         if not enabled:
             return self.stop("disabled")
         if self.state != GimbalState.FAULT:
+            if not was_enabled:
+                self.commanded_pan_deg = self.last_pan_deg
+                self.commanded_tilt_deg = self.last_tilt_deg
+                self._last_pan_duties = (0.5, 0.5, 0.5)
+                self._last_tilt_duties = (0.5, 0.5, 0.5)
             self.pan.motor.enable()
             self.tilt.motor.enable()
             self.state = GimbalState.ENABLED_CLOSED_LOOP
@@ -116,12 +136,14 @@ class GimbalController:
     def stop(self, reason: str = "stop") -> GimbalStatus:
         self.enabled = False
         self._safe_outputs()
-        if self.state != GimbalState.FAULT:
+        recoverable_stop = reason in {"stop", "disabled", "operator_stop"}
+        if recoverable_stop or self.state != GimbalState.FAULT:
             self.state = GimbalState.IDLE
-        self.fault = "" if reason in {"stop", "disabled", "operator_stop"} else reason
+        self.fault = "" if recoverable_stop else reason
         return self.status()
 
     def step(self, now_sec: float) -> GimbalStatus:
+        dt = self._step_dt(now_sec)
         if self.state == GimbalState.FAULT:
             self._safe_outputs()
             return self.status()
@@ -139,14 +161,28 @@ class GimbalController:
             self.state = GimbalState.ENABLED_CLOSED_LOOP
             self.pan.motor.enable()
             self.tilt.motor.enable()
-            self.pan.motor.set_phase_duties(
-                self._duties_for_error(self.target_pan_deg - self.last_pan_deg)
+            self.commanded_pan_deg = self._advance_angle(
+                self.commanded_pan_deg, self.target_pan_deg, dt
             )
-            self.tilt.motor.set_phase_duties(
-                self._duties_for_error(self.target_tilt_deg - self.last_tilt_deg)
+            self.commanded_tilt_deg = self._advance_angle(
+                self.commanded_tilt_deg, self.target_tilt_deg, dt
             )
+            self._last_pan_duties = self._slew_duties(
+                self._last_pan_duties,
+                self._duties_for_axis(self.pan, self.commanded_pan_deg),
+                dt,
+            )
+            self._last_tilt_duties = self._slew_duties(
+                self._last_tilt_duties,
+                self._duties_for_axis(self.tilt, self.commanded_tilt_deg),
+                dt,
+            )
+            self.pan.motor.set_phase_duties(self._last_pan_duties)
+            self.tilt.motor.set_phase_duties(self._last_tilt_duties)
         else:
             self.state = GimbalState.IDLE
+            self.commanded_pan_deg = self.last_pan_deg
+            self.commanded_tilt_deg = self.last_tilt_deg
             self._safe_outputs()
 
         return self.status()
@@ -158,12 +194,16 @@ class GimbalController:
             tilt_deg=self.last_tilt_deg,
             target_pan_deg=self.target_pan_deg,
             target_tilt_deg=self.target_tilt_deg,
+            commanded_pan_deg=self.commanded_pan_deg,
+            commanded_tilt_deg=self.commanded_tilt_deg,
             enabled=self.enabled,
             clamped=self.last_clamped,
             fault=self.fault,
         )
 
     def _safe_outputs(self) -> None:
+        self._last_pan_duties = (0.5, 0.5, 0.5)
+        self._last_tilt_duties = (0.5, 0.5, 0.5)
         self.pan.motor.stop()
         self.tilt.motor.stop()
         self.pan.motor.disable()
@@ -181,18 +221,87 @@ class GimbalController:
             return True
         return (now_sec - self.last_command_sec) > self.config.command_timeout_sec
 
-    def _duties_for_error(self, error_deg: float) -> tuple[float, float, float]:
+    def _step_dt(self, now_sec: float) -> float:
+        if self.last_step_sec is None:
+            self.last_step_sec = now_sec
+            return 0.0
+        dt = max(now_sec - self.last_step_sec, 0.0)
+        self.last_step_sec = now_sec
+        return min(dt, 0.1)
+
+    def _advance_angle(self, current_deg: float, target_deg: float, dt: float) -> float:
+        max_step = max(self.config.target_slew_rate_deg_s, 0.0) * max(dt, 0.0)
+        delta = self._angle_error(current_deg, target_deg)
+        if max_step <= 0.0 or abs(delta) <= max_step:
+            return target_deg
+        return self._wrap_signed_degrees(
+            current_deg + max_step * (1.0 if delta > 0.0 else -1.0)
+        )
+
+    def _slew_duties(
+        self,
+        previous: tuple[float, float, float],
+        target: tuple[float, float, float],
+        dt: float,
+    ) -> tuple[float, float, float]:
+        max_step = max(self.config.duty_slew_rate_per_sec, 0.0) * max(dt, 0.0)
+        if max_step <= 0.0:
+            return previous
+        return tuple(
+            self._advance_scalar(old, new, max_step) for old, new in zip(previous, target)
+        )
+
+    def _duties_for_axis(self, axis: AxisIO, target_deg: float) -> tuple[float, float, float]:
+        current_deg = self.last_pan_deg if axis.config.name == "pan" else self.last_tilt_deg
+        error_deg = self._angle_error(current_deg, target_deg)
+        if axis.config.invert:
+            error_deg *= -1.0
+
         if abs(error_deg) <= self.config.angle_deadband_deg:
-            return (0.0, 0.0, 0.0)
+            return (0.5, 0.5, 0.5)
 
-        duty = min(abs(error_deg) * self.config.proportional_gain, self.config.max_duty)
-        duty = max(duty, min(self.config.startup_duty, self.config.max_duty))
+        signed_modulation = min(
+            max(error_deg * self.config.proportional_gain, -self.config.max_duty),
+            self.config.max_duty,
+        )
+        if abs(signed_modulation) < self.config.startup_duty:
+            ramp_window = max(self.config.angle_deadband_deg * 4.0, 1.0)
+            ramp = min((abs(error_deg) - self.config.angle_deadband_deg) / ramp_window, 1.0)
+            minimum = self.config.startup_duty * max(ramp, 0.0)
+            signed_modulation = math.copysign(
+                max(abs(signed_modulation), minimum),
+                signed_modulation,
+            )
 
-        if error_deg > 0.0:
-            return (duty, 0.0, 0.0)
-        return (0.0, duty, 0.0)
+        electrical_rad = math.radians(
+            current_deg * axis.config.pole_pairs + axis.config.phase_offset_deg
+        )
+        torque_rad = electrical_rad + math.pi / 2.0
+        phases = (0.0, -2.0 * math.pi / 3.0, 2.0 * math.pi / 3.0)
+        return tuple(
+            min(max(0.5 + signed_modulation * math.sin(torque_rad + phase), 0.0), 1.0)
+            for phase in phases
+        )
 
     @staticmethod
     def _clamp(value: float, axis: AxisConfig) -> tuple[float, bool]:
         clamped = min(max(value, axis.min_deg), axis.max_deg)
         return clamped, clamped != value
+
+    @staticmethod
+    def _advance_scalar(current: float, target: float, max_step: float) -> float:
+        delta = target - current
+        if abs(delta) <= max_step:
+            return target
+        return current + max_step * (1.0 if delta > 0.0 else -1.0)
+
+    @staticmethod
+    def _angle_error(current_deg: float, target_deg: float) -> float:
+        return GimbalController._wrap_signed_degrees(target_deg - current_deg)
+
+    @staticmethod
+    def _wrap_signed_degrees(angle: float) -> float:
+        wrapped = (angle + 180.0) % 360.0 - 180.0
+        if wrapped == -180.0 and angle > 0.0:
+            return 180.0
+        return wrapped

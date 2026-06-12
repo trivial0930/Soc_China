@@ -8,10 +8,10 @@ from typing import Sequence
 DEFAULT_PWM_PIN_MAP = {
     29: ("pwmchip0", 0),
     31: ("pwmchip0", 1),
-    37: ("pwmchip1", 2),
-    24: ("pwmchip1", 3),
-    32: ("pwmchip3", 6),
-    33: ("pwmchip3", 7),
+    37: ("pwmchip2", 0),
+    18: ("pwmchip2", 1),
+    28: ("pwmchip4", 0),
+    27: ("pwmchip4", 1),
 }
 
 
