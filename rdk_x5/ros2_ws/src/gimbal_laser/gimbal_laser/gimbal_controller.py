@@ -56,6 +56,8 @@ class ControlConfig:
     angle_deadband_deg: float = 1.0
     command_timeout_sec: float = 1.0
     proportional_gain: float = 0.005
+    integral_gain: float = 0.0
+    integral_limit: float = 0.0
     target_slew_rate_deg_s: float = 32.0
     duty_slew_rate_per_sec: float = 1.25
 
@@ -105,6 +107,7 @@ class GimbalController:
         self.last_tilt_deg = 0.0
         self._last_pan_duties = (0.5, 0.5, 0.5)
         self._last_tilt_duties = (0.5, 0.5, 0.5)
+        self._integral = {"pan": 0.0, "tilt": 0.0}
         self.last_clamped = False
         self.fault = ""
         self._safe_outputs()
@@ -128,6 +131,7 @@ class GimbalController:
                 self.commanded_tilt_deg = self.last_tilt_deg
                 self._last_pan_duties = (0.5, 0.5, 0.5)
                 self._last_tilt_duties = (0.5, 0.5, 0.5)
+                self._integral = {"pan": 0.0, "tilt": 0.0}
             self.pan.motor.enable()
             self.tilt.motor.enable()
             self.state = GimbalState.ENABLED_CLOSED_LOOP
@@ -169,12 +173,12 @@ class GimbalController:
             )
             self._last_pan_duties = self._slew_duties(
                 self._last_pan_duties,
-                self._duties_for_axis(self.pan, self.commanded_pan_deg),
+                self._duties_for_axis(self.pan, self.commanded_pan_deg, dt),
                 dt,
             )
             self._last_tilt_duties = self._slew_duties(
                 self._last_tilt_duties,
-                self._duties_for_axis(self.tilt, self.commanded_tilt_deg),
+                self._duties_for_axis(self.tilt, self.commanded_tilt_deg, dt),
                 dt,
             )
             self.pan.motor.set_phase_duties(self._last_pan_duties)
@@ -204,6 +208,7 @@ class GimbalController:
     def _safe_outputs(self) -> None:
         self._last_pan_duties = (0.5, 0.5, 0.5)
         self._last_tilt_duties = (0.5, 0.5, 0.5)
+        self._integral = {"pan": 0.0, "tilt": 0.0}
         self.pan.motor.stop()
         self.tilt.motor.stop()
         self.pan.motor.disable()
@@ -251,27 +256,53 @@ class GimbalController:
             self._advance_scalar(old, new, max_step) for old, new in zip(previous, target)
         )
 
-    def _duties_for_axis(self, axis: AxisIO, target_deg: float) -> tuple[float, float, float]:
-        current_deg = self.last_pan_deg if axis.config.name == "pan" else self.last_tilt_deg
+    def _duties_for_axis(
+        self, axis: AxisIO, target_deg: float, dt: float = 0.0
+    ) -> tuple[float, float, float]:
+        name = axis.config.name
+        current_deg = self.last_pan_deg if name == "pan" else self.last_tilt_deg
         error_deg = self._angle_error(current_deg, target_deg)
         if axis.config.invert:
             error_deg *= -1.0
 
-        if abs(error_deg) <= self.config.angle_deadband_deg:
-            return (0.5, 0.5, 0.5)
+        in_deadband = abs(error_deg) <= self.config.angle_deadband_deg
+
+        p_term = 0.0 if in_deadband else error_deg * self.config.proportional_gain
+
+        # Integral term (PI) with conditional-integration anti-windup: accumulate only
+        # outside the deadband AND only while the command is not saturated, so a slew
+        # that outruns the axis cannot wind the integral up into a large overshoot.
+        ki = self.config.integral_gain
+        integral = self._integral.get(name, 0.0)
+        saturated = abs(p_term + ki * integral) >= self.config.max_duty
+        if ki > 0.0 and dt > 0.0 and not in_deadband and not saturated:
+            integral += error_deg * dt
+            ilimit = self.config.integral_limit or self.config.max_duty
+            max_integral = ilimit / ki
+            integral = min(max(integral, -max_integral), max_integral)
+            self._integral[name] = integral
+        i_term = ki * integral
 
         signed_modulation = min(
-            max(error_deg * self.config.proportional_gain, -self.config.max_duty),
+            max(p_term + i_term, -self.config.max_duty),
             self.config.max_duty,
         )
-        if abs(signed_modulation) < self.config.startup_duty:
-            ramp_window = max(self.config.angle_deadband_deg * 4.0, 1.0)
-            ramp = min((abs(error_deg) - self.config.angle_deadband_deg) / ramp_window, 1.0)
-            minimum = self.config.startup_duty * max(ramp, 0.0)
-            signed_modulation = math.copysign(
-                max(abs(signed_modulation), minimum),
-                signed_modulation,
-            )
+
+        if in_deadband:
+            # Hold only the integral (e.g. gravity) bias; no stiction kick here.
+            if abs(signed_modulation) < 1e-6:
+                return (0.5, 0.5, 0.5)
+        else:
+            if abs(signed_modulation) < self.config.startup_duty:
+                ramp_window = max(self.config.angle_deadband_deg * 4.0, 1.0)
+                ramp = min(
+                    (abs(error_deg) - self.config.angle_deadband_deg) / ramp_window, 1.0
+                )
+                minimum = self.config.startup_duty * max(ramp, 0.0)
+                signed_modulation = math.copysign(
+                    max(abs(signed_modulation), minimum),
+                    signed_modulation,
+                )
 
         electrical_rad = math.radians(
             current_deg * axis.config.pole_pairs + axis.config.phase_offset_deg

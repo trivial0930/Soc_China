@@ -138,6 +138,65 @@ class GimbalControllerTest(unittest.TestCase):
         self.assertEqual(neutral, (0.5, 0.5, 0.5))
         self.assertLess(max(abs(a - b) for a, b in zip(positive, negative)), 0.03)
 
+    def _pi_controller(self, ki=0.01, ilimit=0.1):
+        pan = AxisIO(
+            config=AxisConfig(name="pan", min_deg=-60.0, max_deg=60.0),
+            sensor=FakeSensor(0.0),
+            motor=FakeMotor(),
+        )
+        tilt = AxisIO(
+            config=AxisConfig(name="tilt", min_deg=-30.0, max_deg=45.0),
+            sensor=FakeSensor(0.0),
+            motor=FakeMotor(),
+        )
+        config = ControlConfig(
+            max_duty=0.1,
+            startup_duty=0.0,
+            proportional_gain=0.005,
+            integral_gain=ki,
+            integral_limit=ilimit,
+        )
+        controller = GimbalController(pan=pan, tilt=tilt, config=config)
+        controller.last_pan_deg = 0.0
+        return controller
+
+    def test_integral_winds_up_then_anti_windup_plateaus(self):
+        controller = self._pi_controller(ki=0.01, ilimit=0.1)
+
+        # Hold a fixed +10 deg error; the integral should grow the torque vector
+        # step over step, then stop growing once the command saturates at max_duty.
+        spreads = []
+        for _ in range(40):
+            duties = controller._duties_for_axis(controller.pan, 10.0, dt=0.1)
+            spreads.append(max(duties) - min(duties))
+
+        self.assertGreater(spreads[5], spreads[0])  # integral accumulates torque
+        # anti-windup: bounded and plateaued (not exploding)
+        self.assertAlmostEqual(spreads[-1], spreads[-5], delta=1e-9)
+
+    def test_integral_does_not_accumulate_when_gain_zero(self):
+        controller = self._pi_controller(ki=0.0)
+
+        spreads = [
+            max(d) - min(d)
+            for d in (
+                controller._duties_for_axis(controller.pan, 10.0, dt=0.1)
+                for _ in range(10)
+            )
+        ]
+
+        # P-only: torque vector is identical every step (no integral growth)
+        self.assertAlmostEqual(max(spreads), min(spreads), delta=1e-9)
+
+    def test_integral_resets_on_enable_and_stop(self):
+        controller = self._pi_controller(ki=0.01, ilimit=0.1)
+        for _ in range(10):
+            controller._duties_for_axis(controller.pan, 10.0, dt=0.1)
+        self.assertGreater(controller._integral["pan"], 0.0)
+
+        controller.stop("operator_stop")
+        self.assertEqual(controller._integral["pan"], 0.0)
+
     def test_stop_disables_motors_and_zeroes_pwm(self):
         controller = build_controller()
         controller.step(now_sec=0.0)

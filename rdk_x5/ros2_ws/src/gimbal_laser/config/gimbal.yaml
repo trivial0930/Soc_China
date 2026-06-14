@@ -7,7 +7,7 @@ gimbal_controller_node:
     pan_max_deg: 60.0
     pan_invert: false
     pan_pole_pairs: 8            # FOC 标定 2026-06-12 (gimbal_foc_calibrate.py), 原 7 错误
-    pan_phase_offset_deg: 66.0   # 电角度; 闭环实测收敛
+    pan_phase_offset_deg: 89.92   # 电角度; 闭环实测收敛
     pan_pwm_pins: [29, 31, 37]
     pan_enable_pin: 38
 
@@ -18,18 +18,20 @@ gimbal_controller_node:
     tilt_max_deg: 45.0
     tilt_invert: false
     tilt_pole_pairs: 7           # FOC 标定 2026-06-12 确认 7
-    tilt_phase_offset_deg: 138.0 # 电角度; 闭环实测收敛
+    tilt_phase_offset_deg: 100.04 # 电角度; 闭环实测收敛
     tilt_pwm_pins: [18, 28, 27]
     tilt_enable_pin: 40
 
     loop_hz: 100.0
     pwm_frequency_hz: 20000
-    max_duty: 0.08
+    max_duty: 0.18
     startup_duty: 0.022
     angle_deadband_deg: 1.0
     command_timeout_sec: 5.0
-    proportional_gain: 0.005
-    target_slew_rate_deg_s: 32.0
+    proportional_gain: 0.008
+    integral_gain: 0.01
+    integral_limit: 0.10
+    target_slew_rate_deg_s: 16.0
     duty_slew_rate_per_sec: 1.25
     status_topic: "/gimbal/status"
     angle_topic: "/gimbal/angle"
