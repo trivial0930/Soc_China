@@ -1,0 +1,82 @@
+<?xml version="1.0"?>
+<!-- RDK X5 four-wheel mecanum chassis description.
+     Geometry matches the firmware (half_length 0.12, half_width 0.10, wheel
+     radius 0.05). Wheel joints are continuous and driven by /joint_states from
+     stm32_bridge. laser/imu offsets are PLACEHOLDERS — measure on the real robot.
+     robot_state_publisher turns this into TF: base_link -> wheels (from
+     joint_states) and base_link -> laser/imu (static). -->
+<robot name="rdk_mecanum">
+
+  <material name="grey"><color rgba="0.3 0.3 0.3 1.0"/></material>
+  <material name="black"><color rgba="0.05 0.05 0.05 1.0"/></material>
+  <material name="red"><color rgba="0.8 0.1 0.1 1.0"/></material>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.24 0.20 0.06"/></geometry>
+      <material name="grey"/>
+    </visual>
+  </link>
+
+  <!-- wheels: cylinders with axle along Y; joint axis Y (rolling) -->
+  <link name="lf_wheel_link">
+    <visual><origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.05" length="0.04"/></geometry>
+      <material name="black"/></visual>
+  </link>
+  <joint name="lf_wheel_joint" type="continuous">
+    <parent link="base_link"/><child link="lf_wheel_link"/>
+    <origin xyz="0.12 0.10 0" rpy="0 0 0"/><axis xyz="0 1 0"/>
+  </joint>
+
+  <link name="rf_wheel_link">
+    <visual><origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.05" length="0.04"/></geometry>
+      <material name="black"/></visual>
+  </link>
+  <joint name="rf_wheel_joint" type="continuous">
+    <parent link="base_link"/><child link="rf_wheel_link"/>
+    <origin xyz="0.12 -0.10 0" rpy="0 0 0"/><axis xyz="0 1 0"/>
+  </joint>
+
+  <link name="lr_wheel_link">
+    <visual><origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.05" length="0.04"/></geometry>
+      <material name="black"/></visual>
+  </link>
+  <joint name="lr_wheel_joint" type="continuous">
+    <parent link="base_link"/><child link="lr_wheel_link"/>
+    <origin xyz="-0.12 0.10 0" rpy="0 0 0"/><axis xyz="0 1 0"/>
+  </joint>
+
+  <link name="rr_wheel_link">
+    <visual><origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.05" length="0.04"/></geometry>
+      <material name="black"/></visual>
+  </link>
+  <joint name="rr_wheel_joint" type="continuous">
+    <parent link="base_link"/><child link="rr_wheel_link"/>
+    <origin xyz="-0.12 -0.10 0" rpy="0 0 0"/><axis xyz="0 1 0"/>
+  </joint>
+
+  <!-- N10 lidar (frame_id "laser"). Measured 2026-06-08: x=0.126 (front), y=0,
+       laser 0.15 m above ground; base_link is at axle height (~0.05) so z=0.10. yaw~0 (6-07 check). -->
+  <link name="laser">
+    <visual><origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.035" length="0.04"/></geometry>
+      <material name="red"/></visual>
+  </link>
+  <joint name="base_to_laser" type="fixed">
+    <parent link="base_link"/><child link="laser"/>
+    <origin xyz="0.126 0.0 0.10" rpy="0 0 0"/>
+  </joint>
+
+  <!-- future IMU -->
+  <link name="imu_link"/>
+  <joint name="base_to_imu" type="fixed">
+    <parent link="base_link"/><child link="imu_link"/>
+    <origin xyz="0.0 0.0 0.02" rpy="0 0 0"/>
+  </joint>
+
+</robot>

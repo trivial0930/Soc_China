@@ -1,0 +1,46 @@
+stm32_bridge:
+  ros__parameters:
+    # --- serial link to STM32 (native USB CDC over Type-C; migrated 2026-06-14
+    # off the 40-pin UART because RDK X5 serial3 and i2c5(thermal+IMU) share the
+    # same pads and conflict after every reboot). Stable by-id name so it never
+    # swaps with the lidar's ttyACM0. baud is ignored by USB CDC but kept for the
+    # bridge's serial open. ---
+    port: /dev/serial/by-id/usb-Soc_China_Robotics_STM32F411_Chassis_VCP_335833553034-if00
+    baud: 115200
+    mode: manual            # idle | manual | auto | test
+    cmd_vel_topic: /cmd_vel
+
+    # --- rates ---
+    heartbeat_hz: 5.0       # STM32 faults if no heartbeat within 2s
+    cmd_rate_hz: 20.0       # CMD_VEL resend rate
+    serial_poll_hz: 200.0
+    cmd_vel_timeout_s: 0.5  # zero the target if no /cmd_vel within this window
+
+    # --- chassis geometry (must match firmware app_chassis_init) ---
+    wheel_radius_m: 0.05
+    half_length_m: 0.12
+    half_width_m: 0.10
+
+    # --- encoder odometry ---
+    # ticks_per_rev = encoder_PPR * 4 (x4) * gear_ratio.
+    # Calibrated 2026-06-08 by hand-rolling RF 6 turns: 15679 ticks / 6 = 2613
+    # (hand-roll estimate, ~+/-2-3%; refine later by driving a measured distance).
+    ticks_per_rev: 2613.0
+    # Per-wheel sign so forward wheel rotation -> positive count. Order LF,RF,LR,RR.
+    # Measured 2026-06-11 (4 wheels, +vx forward drive verified on ground):
+    # forward raw signs were LF+ RF- LR+ RR-, so flip RF/RR to make forward->+.
+    encoder_sign: [1, -1, 1, -1]
+
+    # --- velocity clamp (protocol int16: mm/s, mrad/s) ---
+    max_vx_mm_s: 400
+    max_vy_mm_s: 400
+    max_wz_mrad_s: 1500
+
+    # --- frames / tf ---
+    publish_tf: true
+    odom_frame_id: odom
+    base_frame_id: base_link
+
+    # --- joint states (wheel angles for URDF / robot_state_publisher) ---
+    publish_joint_states: true
+    wheel_joint_names: [lf_wheel_joint, rf_wheel_joint, lr_wheel_joint, rr_wheel_joint]

@@ -1,0 +1,48 @@
+# EKF config WITH a BMI088 IMU fused on top of wheel odometry.
+# Use this instead of ekf.yaml once an IMU node publishes /imu:
+#   ros2 launch chassis_bringup bringup.launch.py ekf_config_file:=ekf_imu.yaml
+#
+# BMI088 has NO magnetometer -> no absolute heading. We therefore fuse the gyro
+# yaw RATE (vyaw) and linear accelerations, NOT absolute yaw. Wheel odometry still
+# supplies x/y and vx/vy; the gyro greatly improves yaw during slip/rotation.
+ekf_filter_node:
+  ros__parameters:
+    frequency: 30.0
+    sensor_timeout: 0.2
+    two_d_mode: true
+    publish_tf: true
+    transform_time_offset: 0.0
+    transform_timeout: 0.0
+    print_diagnostics: true
+
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom
+
+    # ----- wheel odometry from stm32_bridge -----
+    odom0: /odom
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  true,  false,
+                   false, false, true,
+                   false, false, false]
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 10
+
+    # ----- BMI088 IMU (/imu) -----
+    # Fuse ONLY the gyro yaw-rate (vyaw). Do NOT fuse ax/ay: this IMU has no
+    # orientation estimate (no magnetometer), so robot_localization cannot remove
+    # gravity, and a tilted board leaks gravity into ax/ay -> position drift.
+    # Wheel odom already provides vx/vy; the IMU's job here is a clean yaw rate.
+    imu0: /imu
+    imu0_config: [false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  false, false, true,
+                  false, false, false]
+    imu0_differential: false
+    imu0_relative: false
+    imu0_queue_size: 10
+    imu0_remove_gravitational_acceleration: false

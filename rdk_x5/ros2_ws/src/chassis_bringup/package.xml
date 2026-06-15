@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>chassis_bringup</name>
+  <version>0.1.0</version>
+  <description>Bring-up launches and configs (EKF, SLAM, Nav2, static TF) for the RDK X5 mecanum chassis + N10 lidar.</description>
+  <maintainer email="rongzechen@example.com">Soc China Team</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>nav2_simple_commander</exec_depend>
+  <exec_depend>stm32_bridge</exec_depend>
+  <exec_depend>bmi088_imu</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
+  <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>lslidar_driver</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

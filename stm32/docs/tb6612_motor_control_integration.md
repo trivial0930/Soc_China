@@ -6,11 +6,11 @@
 
 ## 当前结论
 
-- RDK X5 不直接接电机驱动板的 PWM、方向或使能信号。
+- RDK X5 不直接接电机驱动板的 PWM 或方向信号。
 - RDK X5 只通过 UART 与 STM32 通信。
-- 四个电机全部由 STM32 输出 PWM、方向和使能信号控制。
-- 本文先按抽象信号名规划，不依赖 TB6612 模块具体丝印顺序。
-- 后续接线时只需要把本文中的 `IN1/IN2/PWM/EN` 对应到实物模块丝印即可。
+- 四个电机全部由 STM32 输出 PWM 和方向信号控制。
+- 按当前 TB6612 驱动板实物丝印，控制端只使用 `1IN1/1IN2/1P/G` 和 `2IN1/2IN2/2P/G`。
+- `1A/1B/2A/2B` 是编码器 A/B 输出，不作为开环驱动阶段的控制输入。
 
 ## 范围
 
@@ -28,7 +28,7 @@
 - 电机 PID。
 - 里程计融合。
 - ROS2 控制节点。
-- 根据实物丝印生成最终接线标签。
+- 编码器引脚采集。
 
 ## RDK X5 接线约束
 
@@ -86,7 +86,6 @@ LF, RF, LR, RR
 
 - 左侧两路电机线集中到同一块驱动板。
 - 右侧两路电机线集中到另一块驱动板。
-- 每块驱动板只需要一根公共 `EN/STBY` 使能线。
 - 后续排查时可以按左板、右板快速定位问题。
 
 ## STM32 引脚规划
@@ -102,14 +101,14 @@ LF, RF, LR, RR
 | PH0 / PH1 | HSE 外部晶振 | 保留 |
 | PC13 | 板载 LED / GPIO | 保留 |
 
-建议新增 TIM3 四路 PWM：
+建议新增 TIM3 四路 PWM，并将 PWM 对应到驱动板丝印中的 `1P/2P`：
 
-| 轮位 | 模块通道 | PWM 引脚 | TIM 通道 | 方向 IN1 | 方向 IN2 | 使能 |
+| 轮位 | 模块通道 | PWM 引脚 | TIM 通道 | 方向 IN1 | 方向 IN2 | 驱动板控制端 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 左上 LF | TB6612-A 电机1 | PA6 | TIM3_CH1 | PA0 | PA1 | PB10 |
-| 右上 RF | TB6612-B 电机1 | PB0 | TIM3_CH3 | PA4 | PA5 | PB11 |
-| 左下 LR | TB6612-A 电机2 | PA7 | TIM3_CH2 | PA2 | PA3 | PB10 |
-| 右下 RR | TB6612-B 电机2 | PB1 | TIM3_CH4 | PB8 | PB9 | PB11 |
+| 左上 LF | TB6612-A 电机1 | PA6 | TIM3_CH1 | PA0 | PA1 | `1P / 1IN1 / 1IN2` |
+| 右上 RF | TB6612-B 电机1 | PB0 | TIM3_CH3 | PA4 | PA5 | `1P / 1IN1 / 1IN2` |
+| 左下 LR | TB6612-A 电机2 | PA7 | TIM3_CH2 | PA2 | PA3 | `2P / 2IN1 / 2IN2` |
+| 右下 RR | TB6612-B 电机2 | PB1 | TIM3_CH4 | PB8 | PB9 | `2P / 2IN1 / 2IN2` |
 
 选择理由：
 
@@ -117,7 +116,19 @@ LF, RF, LR, RR
 - PA6、PA7、PB0、PB1 不占用 USART1 的 PA9/PA10。
 - PA13/PA14 仍保留给 SWD 下载和调试。
 - 方向脚使用普通 GPIO，方便后续替换。
-- 每块 TB6612 一个 `EN/STBY`，安全停车时可统一关闭整块驱动。
+- 该驱动板控制排针未暴露独立 `EN/STBY`，代码不占用 PB10/PB11 作为使能脚。
+
+实物丝印对应关系：
+
+| 丝印 | 含义 | 是否接 STM32 控制脚 |
+| --- | --- | --- |
+| `1IN1` / `1IN2` | 电机1方向输入 | 是 |
+| `1P` | 电机1 PWM 输入 | 是 |
+| `2IN1` / `2IN2` | 电机2方向输入 | 是 |
+| `2P` | 电机2 PWM 输入 | 是 |
+| `G` | 信号地 | 是，和 STM32/RDK/电源负极共地 |
+| `1A` / `1B` | 电机1编码器 A/B 输出 | 暂不接入控制代码 |
+| `2A` / `2B` | 电机2编码器 A/B 输出 | 暂不接入控制代码 |
 
 ## TB6612 控制逻辑
 
@@ -161,7 +172,7 @@ IN2: 方向输入 2
 新增普通 GPIO 输出：
 
 ```text
-PA0, PA1, PA2, PA3, PA4, PA5, PB8, PB9, PB10, PB11
+PA0, PA1, PA2, PA3, PA4, PA5, PB8, PB9
 ```
 
 建议配置：
@@ -210,8 +221,6 @@ typedef struct
   uint16_t in1_pin;
   GPIO_TypeDef *in2_port;
   uint16_t in2_pin;
-  GPIO_TypeDef *en_port;
-  uint16_t en_pin;
 } AppMotorHw;
 ```
 
@@ -219,10 +228,10 @@ typedef struct
 
 ```c
 static AppMotorHw app_motor_hw[MECANUM_WHEEL_COUNT] = {
-  [MECANUM_WHEEL_LF] = {&htim3, TIM_CHANNEL_1, GPIOA, GPIO_PIN_0, GPIOA, GPIO_PIN_1, GPIOB, GPIO_PIN_10},
-  [MECANUM_WHEEL_RF] = {&htim3, TIM_CHANNEL_3, GPIOA, GPIO_PIN_4, GPIOA, GPIO_PIN_5, GPIOB, GPIO_PIN_11},
-  [MECANUM_WHEEL_LR] = {&htim3, TIM_CHANNEL_2, GPIOA, GPIO_PIN_2, GPIOA, GPIO_PIN_3, GPIOB, GPIO_PIN_10},
-  [MECANUM_WHEEL_RR] = {&htim3, TIM_CHANNEL_4, GPIOB, GPIO_PIN_8, GPIOB, GPIO_PIN_9, GPIOB, GPIO_PIN_11},
+  [MECANUM_WHEEL_LF] = {&htim3, TIM_CHANNEL_1, GPIOA, GPIO_PIN_0, GPIOA, GPIO_PIN_1},
+  [MECANUM_WHEEL_RF] = {&htim3, TIM_CHANNEL_3, GPIOA, GPIO_PIN_4, GPIOA, GPIO_PIN_5},
+  [MECANUM_WHEEL_LR] = {&htim3, TIM_CHANNEL_2, GPIOA, GPIO_PIN_2, GPIOA, GPIO_PIN_3},
+  [MECANUM_WHEEL_RR] = {&htim3, TIM_CHANNEL_4, GPIOB, GPIO_PIN_8, GPIOB, GPIO_PIN_9},
 };
 ```
 
@@ -233,9 +242,6 @@ static AppMotorHw app_motor_hw[MECANUM_WHEEL_COUNT] = {
 ```c
 static void app_motor_output_start(void)
 {
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_SET);
-
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
@@ -300,19 +306,7 @@ static void app_write_motor(MecanumWheelId wheel, const MecanumMotorCommand *com
 }
 ```
 
-后续如果要在急停时直接关闭驱动板，可以增加：
-
-```c
-static void app_motor_output_enable(uint8_t enabled)
-{
-  GPIO_PinState state = (enabled != 0u) ? GPIO_PIN_SET : GPIO_PIN_RESET;
-
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, state);
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, state);
-}
-```
-
-初版可以先保持 `EN/STBY` 上电后拉高，通过 `PWM=0` 和 `IN1=IN2=0` 停车。
+当前实物板未暴露独立 `EN/STBY` 控制端，停车通过 `PWM=0` 和 `IN1=IN2=0` 完成。
 
 ## 代码文件影响范围
 
@@ -368,7 +362,7 @@ stm32/firmware/stm32_motion_controller/stm32_motion_controller.ioc
 - TIM3_CH2：PA7
 - TIM3_CH3：PB0
 - TIM3_CH4：PB1
-- GPIO Output：PA0、PA1、PA2、PA3、PA4、PA5、PB8、PB9、PB10、PB11
+- GPIO Output：PA0、PA1、PA2、PA3、PA4、PA5、PB8、PB9
 
 生成代码后检查：
 
@@ -455,7 +449,7 @@ python3 rdk_x5/scripts/uart_send_test.py --port /dev/ttyS1 --baud 115200 --durat
 
 - TB6612 电源电压正确。
 - STM32 与 TB6612 共地。
-- `EN/STBY` 高电平后驱动板进入使能状态。
+- 驱动板开关处于 ON，控制排针 `G` 与 STM32 GND 已共地。
 - 下发命令后电机输出端电压随 PWM 改变。
 - STOP 后输出回到 0。
 
@@ -503,19 +497,18 @@ python3 rdk_x5/scripts/uart_send_test.py --port /dev/ttyS1 --baud 115200 --durat
 - 电机电源不要从 RDK 40Pin 取。
 - STM32 控制信号必须确认是 3.3V 逻辑可接受。
 - TB6612 模块如果有独立逻辑电源口，优先确认说明书后再接。
-- 上电前确认 `EN/STBY` 默认低电平。
+- 上电前确认 `1IN1/1IN2/2IN1/2IN2` 默认低电平、`1P/2P` 初始占空比为 0。
 - 调试初期限制速度，例如 RDK 只发 `vx=30` 或 `vx=50`。
 - 未验证方向前不要落地高速运行。
 
 ## 当前疑问
 
-这些疑问不影响先写代码结构，但会影响最终接线和实车测试：
+这些疑问不影响当前开环驱动代码，但会影响后续闭环和实车调参：
 
-- TB6612 模块控制排针的真实丝印顺序。
-- 模块 `EN/STBY` 是否每个电机独立，还是整板共用。
 - 模块逻辑输入是否明确支持 STM32 3.3V 高电平。
 - 普通电机接口与编码器电机接口是否共用同一路 TB6612 输出。
-- 如果使用编码器电机接口，编码器输出线后续接 RDK 还是 STM32。
+- 编码器输出线后续接 RDK 还是 STM32。
+- 每个轮子的正转方向是否和当前软件 `invert[]` 默认值一致。
 
 ## 建议提交顺序
 

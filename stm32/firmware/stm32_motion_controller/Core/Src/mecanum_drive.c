@@ -222,10 +222,18 @@ void MecanumDrive_Mix(float vx_mps,
     }
 
     radius = config->wheel_radius_m;
-    rot = (config->half_length_m + config->half_width_m) * wz_radps;
+    /* Negated rot sign: verified 2026-06-11 that +wz produced CW (should be CCW
+       per REP-103). vx/vy were already correct, so only the rotation term needed
+       flipping. The bridge forward-kinematics (mecanum_odometry.py) negates its
+       wz term to match. */
+    rot = -(config->half_length_m + config->half_width_m) * wz_radps;
 
-    wheel_radps[MECANUM_WHEEL_LF] = (vx_mps - vy_mps - rot) / radius;
-    wheel_radps[MECANUM_WHEEL_RF] = (vx_mps + vy_mps + rot) / radius;
-    wheel_radps[MECANUM_WHEEL_LR] = (vx_mps + vy_mps - rot) / radius;
-    wheel_radps[MECANUM_WHEEL_RR] = (vx_mps - vy_mps + rot) / radius;
+    /* vy sign negated 2026-06-11: after fixing the RF<->RR motor swap, +vy
+       strafed RIGHT; REP-103 wants +vy = LEFT. Flipping all four vy terms makes
+       +vy strafe left (only the vy axis changes; vx/wz untouched). The bridge
+       forward-kinematics (mecanum_odometry.py) negates its vy term to match. */
+    wheel_radps[MECANUM_WHEEL_LF] = (vx_mps + vy_mps - rot) / radius;
+    wheel_radps[MECANUM_WHEEL_RF] = (vx_mps - vy_mps + rot) / radius;
+    wheel_radps[MECANUM_WHEEL_LR] = (vx_mps - vy_mps - rot) / radius;
+    wheel_radps[MECANUM_WHEEL_RR] = (vx_mps + vy_mps + rot) / radius;
 }

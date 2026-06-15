@@ -1,0 +1,50 @@
+# robot_localization EKF — fuses wheel odometry (/odom from stm32_bridge) and,
+# when present, an IMU (/imu). Publishes the odom->base_link transform, so
+# stm32_bridge MUST run with publish_tf:=false (it only publishes the /odom topic).
+#
+# 2D mecanum chassis: x, y and yaw are all observable from wheel odometry, so we
+# fuse the body velocities vx, vy, vyaw. Add the IMU block once an IMU is wired.
+ekf_filter_node:
+  ros__parameters:
+    frequency: 30.0
+    sensor_timeout: 0.2
+    two_d_mode: true
+    publish_tf: true
+    transform_time_offset: 0.0
+    transform_timeout: 0.0
+    print_diagnostics: true
+
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom          # EKF provides odom->base_link
+
+    # ----- wheel odometry from stm32_bridge -----
+    odom0: /odom
+    # [ x,     y,     z,
+    #   roll,  pitch, yaw,
+    #   vx,    vy,    vz,
+    #   vroll, vpitch,vyaw,
+    #   ax,    ay,    az ]
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  true,  false,
+                   false, false, true,
+                   false, false, false]
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 10
+
+    # ----- IMU (enable after wiring an IMU that publishes /imu) -----
+    # imu0: /imu
+    # imu0_config: [false, false, false,
+    #               false, false, true,
+    #               false, false, false,
+    #               false, false, true,
+    #               true,  true,  false]
+    # imu0_differential: false
+    # imu0_relative: false
+    # imu0_remove_gravitational_acceleration: true
+
+    # Process noise / initial estimate covariances left at robot_localization
+    # defaults; tune on hardware once odometry is calibrated.

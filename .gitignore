@@ -48,3 +48,25 @@ captures/
 *.onnx
 *.pt
 *.pth
+
+# Local virtualenv (1.5G)
+.venv-yolo/
+
+# YOLO model weights / training artifacts / export deliverables (not for git;
+# contain >100MB files GitHub rejects)
+lab_hazard_yolo_v1/
+lab_hazard_yolo_v3/
+hazard_yolo_bootstrap_v3_deliverables/
+hazard_yolo11s_640_rdk_export/
+*.zip
+*.tar.gz
+
+# Lab detector deploy: keep source/config/docs, exclude large image datasets
+rdk_x5_lab_detector_deploy_20260603/calibration_images/
+rdk_x5_lab_detector_deploy_20260603/camera_tests/
+rdk_x5_lab_detector_deploy_20260603/smoke_tests/
+*.jpg
+*.jpeg
+
+# macOS Finder duplicate artifacts (" 2" suffixed copies)
+* 2.*

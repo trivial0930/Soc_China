@@ -23,6 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include "mecanum_drive.h"
 #include "rdk_stm32_uart.h"
+#include "usb_device.h"
+#include "usbd_cdc_if.h"
 
 /* USER CODE END Includes */
 
@@ -36,8 +38,6 @@ typedef struct
   uint16_t in1_pin;
   GPIO_TypeDef *in2_port;
   uint16_t in2_pin;
-  GPIO_TypeDef *en_port;
-  uint16_t en_pin;
 } AppMotorHw;
 
 /* USER CODE END PTD */
@@ -67,9 +67,13 @@ typedef struct
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
+TIM_HandleTypeDef htim5;
 
-UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 static rdk_parser_t uart_parser;
@@ -85,11 +89,18 @@ static volatile uint32_t app_last_heartbeat_ms;
 static uint32_t app_last_status_ms;
 static MecanumDrive app_chassis;
 static volatile MecanumMotorCommand app_last_motor_command[MECANUM_WHEEL_COUNT];
+/* RF and RR motor channels are physically swapped vs the encoders (verified
+   2026-06-11 by per-wheel encoder+visual): the realized [vx,vy,wz] response of
+   physical RF equals the standard RR row and vice versa. RF/RR share the same
+   vx & wz signs and differ only in vy, so swapping them fixes strafe (vy) while
+   leaving the verified vx (forward) and wz (CCW) untouched, and re-pairs each
+   logical motor with its own encoder for closed-loop PID.
+   Original (pre-swap): RF=CH3/PA4/PA5  RR=CH4/PB8/PB9. */
 static AppMotorHw app_motor_hw[MECANUM_WHEEL_COUNT] = {
-  [MECANUM_WHEEL_LF] = {&htim3, TIM_CHANNEL_1, GPIOA, GPIO_PIN_0, GPIOA, GPIO_PIN_1, GPIOB, GPIO_PIN_10},
-  [MECANUM_WHEEL_RF] = {&htim3, TIM_CHANNEL_3, GPIOA, GPIO_PIN_4, GPIOA, GPIO_PIN_5, GPIOB, GPIO_PIN_11},
-  [MECANUM_WHEEL_LR] = {&htim3, TIM_CHANNEL_2, GPIOA, GPIO_PIN_2, GPIOA, GPIO_PIN_3, GPIOB, GPIO_PIN_10},
-  [MECANUM_WHEEL_RR] = {&htim3, TIM_CHANNEL_4, GPIOB, GPIO_PIN_8, GPIOB, GPIO_PIN_9, GPIOB, GPIO_PIN_11},
+  [MECANUM_WHEEL_LF] = {&htim3, TIM_CHANNEL_1, GPIOB, GPIO_PIN_12, GPIOB, GPIO_PIN_13},
+  [MECANUM_WHEEL_RF] = {&htim3, TIM_CHANNEL_4, GPIOB, GPIO_PIN_8, GPIOB, GPIO_PIN_9},
+  [MECANUM_WHEEL_LR] = {&htim3, TIM_CHANNEL_2, GPIOB, GPIO_PIN_14, GPIOB, GPIO_PIN_15},
+  [MECANUM_WHEEL_RR] = {&htim3, TIM_CHANNEL_3, GPIOA, GPIO_PIN_4, GPIOA, GPIO_PIN_5},
 };
 
 /* USER CODE END PV */
@@ -98,9 +109,15 @@ static AppMotorHw app_motor_hw[MECANUM_WHEEL_COUNT] = {
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM3_Init(void);
-static void MX_USART1_UART_Init(void);
+static void MX_TIM1_Init(void);
+static void MX_TIM2_Init(void);
+static void MX_TIM4_Init(void);
+static void MX_TIM5_Init(void);
+static void MX_USART2_UART_Init(void);
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 /* USER CODE BEGIN PFP */
+static void app_encoders_start(void);
+static void send_odom(void);
 static void app_uart_start(void);
 static void app_tick(void);
 static void app_update_comm_state(uint32_t now_ms);
@@ -151,9 +168,15 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_TIM3_Init();
-  MX_USART1_UART_Init();
+  MX_TIM1_Init();
+  MX_TIM2_Init();
+  MX_TIM4_Init();
+  MX_TIM5_Init();
+  MX_USART2_UART_Init();
+  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
   app_motor_output_start();
+  app_encoders_start();
   app_chassis_init();
   app_uart_start();
 
@@ -195,7 +218,10 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLM = 25;
   RCC_OscInitStruct.PLL.PLLN = 336;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
-  RCC_OscInitStruct.PLL.PLLQ = 4;
+  /* PLLQ=7 -> USB clock = VCO(336MHz)/7 = 48MHz exactly (required for USB FS).
+     SYSCLK is unaffected (still PLLP/4 = 84MHz). Changed from 4 when the chassis
+     link moved off USART2 onto the native USB CDC (Type-C) on 2026-06-14. */
+  RCC_OscInitStruct.PLL.PLLQ = 7;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -217,35 +243,35 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief USART1 Initialization Function
+  * @brief USART2 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_USART1_UART_Init(void)
+static void MX_USART2_UART_Init(void)
 {
 
-  /* USER CODE BEGIN USART1_Init 0 */
+  /* USER CODE BEGIN USART2_Init 0 */
 
-  /* USER CODE END USART1_Init 0 */
+  /* USER CODE END USART2_Init 0 */
 
-  /* USER CODE BEGIN USART1_Init 1 */
+  /* USER CODE BEGIN USART2_Init 1 */
 
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN USART1_Init 2 */
+  /* USER CODE BEGIN USART2_Init 2 */
 
-  /* USER CODE END USART1_Init 2 */
+  /* USER CODE END USART2_Init 2 */
 
 }
 
@@ -320,6 +346,129 @@ static void MX_TIM3_Init(void)
 
 }
 
+/* Encoder quadrature config shared by TIM1/2/4/5 (x4 counting, input filter). */
+static void app_encoder_config(TIM_Encoder_InitTypeDef *sConfig)
+{
+  sConfig->EncoderMode = TIM_ENCODERMODE_TI12;
+  sConfig->IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig->IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig->IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig->IC1Filter = 10;
+  sConfig->IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig->IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig->IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig->IC2Filter = 10;
+}
+
+/**
+  * @brief TIM1 Initialization Function (RF wheel encoder: PA8/PA9)
+  */
+static void MX_TIM1_Init(void)
+{
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 0;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 65535;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  app_encoder_config(&sConfig);
+  if (HAL_TIM_Encoder_Init(&htim1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief TIM2 Initialization Function (LR wheel encoder: PA15/PB3)
+  */
+static void MX_TIM2_Init(void)
+{
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 0;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 65535;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  app_encoder_config(&sConfig);
+  if (HAL_TIM_Encoder_Init(&htim2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief TIM4 Initialization Function (RR wheel encoder: PB6/PB7)
+  */
+static void MX_TIM4_Init(void)
+{
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 0;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 65535;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  app_encoder_config(&sConfig);
+  if (HAL_TIM_Encoder_Init(&htim4, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief TIM5 Initialization Function (LF wheel encoder: PA0/PA1)
+  */
+static void MX_TIM5_Init(void)
+{
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  htim5.Instance = TIM5;
+  htim5.Init.Prescaler = 0;
+  htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim5.Init.Period = 65535;
+  htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  app_encoder_config(&sConfig);
+  if (HAL_TIM_Encoder_Init(&htim5, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim5, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
 /**
   * @brief GPIO Initialization Function
   * @param None
@@ -340,9 +489,9 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3
-                          |GPIO_PIN_4|GPIO_PIN_5, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_11, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4|GPIO_PIN_5, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8|GPIO_PIN_9
+                          |GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
@@ -351,16 +500,16 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA0 PA1 PA2 PA3 PA4 PA5 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3
-                          |GPIO_PIN_4|GPIO_PIN_5;
+  /*Configure GPIO pins : PA4 PA5 (RF direction IN1/IN2) */
+  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_5;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB8 PB9 PB10 PB11 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_11;
+  /*Configure GPIO pins : PB8 PB9 (RR dir) PB12 PB13 (LF dir) PB14 PB15 (LR dir) */
+  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9
+                          |GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -380,7 +529,10 @@ static void app_uart_start(void)
   app_last_cmd_ms = now;
   app_last_heartbeat_ms = now;
   app_last_status_ms = now;
-  (void)HAL_UART_Receive_IT(&huart1, &uart_rx_byte, 1);
+  /* RX now arrives via USB CDC (CDC_Receive_FS -> rdk_comm_on_rx_bytes), which
+     is event-driven and needs no arming here. USART2 RX is intentionally left
+     un-armed: with the chassis link on USB, PA3 is unused and would otherwise
+     float and inject noise/false CRC errors. */
   send_status();
 }
 
@@ -394,6 +546,7 @@ static void app_tick(void)
   {
     app_last_status_ms = now;
     send_status();
+    send_odom();
   }
 }
 
@@ -426,9 +579,9 @@ static void app_update_comm_state(uint32_t now_ms)
 
 static void app_motor_output_start(void)
 {
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3
-                          |GPIO_PIN_4|GPIO_PIN_5, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4|GPIO_PIN_5, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8|GPIO_PIN_9
+                          |GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15, GPIO_PIN_RESET);
 
   __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0u);
   __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0u);
@@ -451,8 +604,6 @@ static void app_motor_output_start(void)
   {
     Error_Handler();
   }
-
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10|GPIO_PIN_11, GPIO_PIN_SET);
 }
 
 static void dispatch_frame(const rdk_frame_t *frame)
@@ -549,6 +700,8 @@ static void app_chassis_init(void)
   cfg.max_wheel_radps = APP_CHASSIS_MAX_WHEEL_RADPS;
   cfg.pwm_max = APP_CHASSIS_PWM_MAX;
   cfg.command_timeout_ms = APP_CMD_TIMEOUT_MS;
+  cfg.invert[MECANUM_WHEEL_LF] = -1;
+  cfg.invert[MECANUM_WHEEL_LR] = -1;
   cfg.write_motor = app_write_motor;
   cfg.user = 0;
 
@@ -578,17 +731,20 @@ static void app_write_motor(MecanumWheelId wheel, const MecanumMotorCommand *com
     return;
   }
 
-  HAL_GPIO_WritePin(hw->en_port, hw->en_pin, GPIO_PIN_SET);
-
+  /* All four motor leads are wired with inverted polarity vs the firmware's
+     IN1/IN2 convention (verified 2026-06-11: +vx drove the robot backward on
+     the ground). Swapping the IN1/IN2 levels here flips every wheel's physical
+     direction at the hardware-facing layer, so +vx=forward, +vy and +wz become
+     consistent too, while the kinematics mix stays pure. */
   if (command->dir == MECANUM_DIR_FORWARD)
-  {
-    HAL_GPIO_WritePin(hw->in1_port, hw->in1_pin, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(hw->in2_port, hw->in2_pin, GPIO_PIN_RESET);
-  }
-  else
   {
     HAL_GPIO_WritePin(hw->in1_port, hw->in1_pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(hw->in2_port, hw->in2_pin, GPIO_PIN_SET);
+  }
+  else
+  {
+    HAL_GPIO_WritePin(hw->in1_port, hw->in1_pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(hw->in2_port, hw->in2_pin, GPIO_PIN_RESET);
   }
 
   __HAL_TIM_SET_COMPARE(hw->htim, hw->channel, command->pwm);
@@ -624,7 +780,24 @@ static HAL_StatusTypeDef send_protocol_frame(uint8_t type, const uint8_t *payloa
   }
 
   uart_tx_seq = (uint8_t)(uart_tx_seq + 1u);
-  return HAL_UART_Transmit(&huart1, raw, (uint16_t)frame_len, 20u);
+
+  /* Chassis link now runs over the native USB CDC (Type-C), not USART2.
+     CDC_Transmit_FS returns USBD_BUSY while the previous IN packet is still
+     in flight; retry briefly so back-to-back frames (STATUS+ODOM) don't drop.
+     If the host is absent it returns BUSY/FAIL and we give up after the budget
+     (no blocking when unplugged). */
+  uint32_t start = HAL_GetTick();
+  uint8_t rc;
+  do
+  {
+    rc = CDC_Transmit_FS(raw, (uint16_t)frame_len);
+    if (rc == USBD_OK)
+    {
+      return HAL_OK;
+    }
+  } while ((rc == USBD_BUSY) && ((uint32_t)(HAL_GetTick() - start) < 5u));
+
+  return HAL_ERROR;
 }
 
 static void send_ack(uint8_t ack_type, uint8_t ack_seq, uint8_t result)
@@ -656,9 +829,59 @@ static void send_status(void)
   (void)send_protocol_frame(RDK_FRAME_STATUS, payload, sizeof(payload));
 }
 
+static void app_encoders_start(void)
+{
+  (void)HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
+  (void)HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
+  (void)HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL);
+  (void)HAL_TIM_Encoder_Start(&htim5, TIM_CHANNEL_ALL);
+}
+
+static void send_odom(void)
+{
+  /* Raw 16-bit quadrature counter per wheel (x4 counts). Order: LF, RF, LR, RR.
+     Physical wiring (verified 2026-06-11 by per-wheel hand-spin): the two LEFT
+     encoders were cross-wired -- physical LF lands on TIM2(PA15/PB3) and physical
+     LR on TIM5(PA0/PA1). We therefore read LF<-TIM2 and LR<-TIM5 so the ODOM
+     payload is canonical (LF,RF,LR,RR). RF=TIM1(PA8/PA9) RR=TIM4(PB6/PB7) OK. */
+  uint8_t payload[8];
+  int16_t lf = (int16_t)__HAL_TIM_GET_COUNTER(&htim2);
+  int16_t rf = (int16_t)__HAL_TIM_GET_COUNTER(&htim1);
+  int16_t lr = (int16_t)__HAL_TIM_GET_COUNTER(&htim5);
+  int16_t rr = (int16_t)__HAL_TIM_GET_COUNTER(&htim4);
+
+  rdk_pack_odom(payload, lf, rf, lr, rr);
+  (void)send_protocol_frame(RDK_FRAME_ODOM, payload, sizeof(payload));
+}
+
+/* Chassis link RX path. Called from the USB CDC interface (usbd_cdc_if.c,
+   CDC_Receive_FS) for every received packet -- strong override of the __weak
+   stub there. Feeds each byte into the same rdk protocol parser the old USART2
+   RX interrupt used, so dispatch_frame / comm-state logic is unchanged. */
+void rdk_comm_on_rx_bytes(const uint8_t *data, uint32_t len)
+{
+  rdk_frame_t frame;
+  uint32_t i;
+
+  for (i = 0u; i < len; i++)
+  {
+    rdk_parse_result_t result = rdk_parser_feed(&uart_parser, data[i], &frame);
+
+    if (result == RDK_PARSE_FRAME_READY)
+    {
+      dispatch_frame(&frame);
+    }
+    else if (result == RDK_PARSE_CRC_ERROR)
+    {
+      app_comm_state = RDK_COMM_CRC_ERROR_LIMIT;
+      app_fault_code = APP_FAULT_CRC_ERROR_LIMIT;
+    }
+  }
+}
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-  if (huart->Instance == USART1)
+  if (huart->Instance == USART2)
   {
     rdk_frame_t frame;
     rdk_parse_result_t result = rdk_parser_feed(&uart_parser, uart_rx_byte, &frame);
@@ -673,15 +896,15 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
       app_fault_code = APP_FAULT_CRC_ERROR_LIMIT;
     }
 
-    (void)HAL_UART_Receive_IT(&huart1, &uart_rx_byte, 1);
+    (void)HAL_UART_Receive_IT(&huart2, &uart_rx_byte, 1);
   }
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-  if (huart->Instance == USART1)
+  if (huart->Instance == USART2)
   {
-    (void)HAL_UART_Receive_IT(&huart1, &uart_rx_byte, 1);
+    (void)HAL_UART_Receive_IT(&huart2, &uart_rx_byte, 1);
   }
 }
 

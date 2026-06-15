@@ -1,0 +1,21 @@
+# RGB <-> Thermal spatial calibration (Phase 2).
+# homography_thermal_to_rgb maps a THERMAL pixel (x,y) to its RGB pixel.
+# Produced by scripts/thermal_rgb_calibrate.py from >=4 point-source correspondences.
+#
+# PLACEHOLDER: the matrix below is a pure resolution scale (thermal 80x62 ->
+# rgb 1920x1072) with NO translation/shear. It is only good enough to smoke-test
+# the pipeline; replace it with a real calibration before trusting alignment.
+
+rgb_width: 1920
+rgb_height: 1072
+thermal_width: 80
+thermal_height: 62
+
+calibrated: false        # set true once a real calibration is captured
+calibrated_at: null
+
+# 3x3, row-major. Default = diag(1920/80, 1072/62, 1) = diag(24.0, ~17.29, 1).
+homography_thermal_to_rgb:
+  - [24.0, 0.0, 0.0]
+  - [0.0, 17.290322580645161, 0.0]
+  - [0.0, 0.0, 1.0]

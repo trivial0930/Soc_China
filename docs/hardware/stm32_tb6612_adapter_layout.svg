@@ -1,0 +1,187 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1100" viewBox="0 0 1600 1100">
+  <defs>
+    <style>
+      .title { font: 700 30px Arial, sans-serif; fill: #111827; }
+      .subtitle { font: 18px Arial, sans-serif; fill: #374151; }
+      .label { font: 16px Arial, sans-serif; fill: #111827; }
+      .small { font: 13px Arial, sans-serif; fill: #374151; }
+      .tiny { font: 11px Arial, sans-serif; fill: #374151; }
+      .pin { fill: #f8fafc; stroke: #475569; stroke-width: 1; }
+      .pin-used { fill: #fde68a; stroke: #92400e; stroke-width: 2; }
+      .pin-uart { fill: #bfdbfe; stroke: #1d4ed8; stroke-width: 2; }
+      .pin-dir { fill: #bbf7d0; stroke: #15803d; stroke-width: 2; }
+      .pin-pwm { fill: #fed7aa; stroke: #c2410c; stroke-width: 2; }
+      .pin-gnd { fill: #111827; stroke: #111827; stroke-width: 1; }
+      .pin-gnd-text { font: 12px Arial, sans-serif; fill: #ffffff; }
+      .board { fill: #e5e7eb; stroke: #111827; stroke-width: 3; }
+      .module { fill: #111827; stroke: #030712; stroke-width: 3; }
+      .stm { fill: #1f2937; stroke: #020617; stroke-width: 3; }
+      .usb { fill: #d1d5db; stroke: #6b7280; stroke-width: 2; }
+      .header { fill: #ffffff; stroke: #334155; stroke-width: 2; }
+      .connector { fill: #ffffff; stroke: #111827; stroke-width: 2; }
+      .motor { fill: #fef3c7; stroke: #92400e; stroke-width: 2; }
+      .power { fill: #fee2e2; stroke: #b91c1c; stroke-width: 2; }
+      .note { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.5; }
+      .route-uart { fill: none; stroke: #2563eb; stroke-width: 4; }
+      .route-pwm { fill: none; stroke: #f97316; stroke-width: 4; }
+      .route-dir { fill: none; stroke: #16a34a; stroke-width: 4; }
+      .route-gnd { fill: none; stroke: #111827; stroke-width: 5; }
+      .route-power { fill: none; stroke: #dc2626; stroke-width: 5; }
+      .route-bus { fill: none; stroke: #64748b; stroke-width: 12; stroke-linecap: round; opacity: 0.35; }
+    </style>
+  </defs>
+
+  <rect x="40" y="40" width="1520" height="1020" rx="28" class="board"/>
+  <text x="800" y="88" text-anchor="middle" class="title">STM32F411CEU6 + RDK X5 + 双 TB6612 转接 PCB 示意图</text>
+  <text x="800" y="118" text-anchor="middle" class="subtitle">目标：STM32 开发板插接在中间，左/右 TB6612 分别靠近左/右轮，RDK 只接 UART，电机线从四角离板</text>
+
+  <!-- RDK UART connector -->
+  <rect x="90" y="145" width="255" height="150" rx="10" class="connector"/>
+  <text x="217" y="175" text-anchor="middle" class="label">J1 RDK X5 UART</text>
+  <rect x="120" y="195" width="58" height="36" class="pin-uart"/><text x="149" y="219" text-anchor="middle" class="small">Pin8 TX</text>
+  <rect x="188" y="195" width="58" height="36" class="pin-uart"/><text x="217" y="219" text-anchor="middle" class="small">Pin10 RX</text>
+  <rect x="256" y="195" width="58" height="36" class="pin-gnd"/><text x="285" y="219" text-anchor="middle" class="pin-gnd-text">GND</text>
+  <text x="217" y="260" text-anchor="middle" class="small">3.3V TTL / /dev/ttyS1</text>
+
+  <!-- Motor power connector -->
+  <rect x="650" y="925" width="300" height="95" rx="10" class="power"/>
+  <text x="800" y="956" text-anchor="middle" class="label">J_PWR 电机电源输入</text>
+  <rect x="695" y="974" width="85" height="30" class="power"/><text x="737" y="995" text-anchor="middle" class="small">VMOTOR+</text>
+  <rect x="820" y="974" width="85" height="30" class="pin-gnd"/><text x="862" y="995" text-anchor="middle" class="pin-gnd-text">GND</text>
+
+  <!-- STM32 module -->
+  <rect x="590" y="185" width="420" height="710" rx="18" class="stm"/>
+  <rect x="712" y="205" width="176" height="84" rx="8" class="usb"/>
+  <text x="800" y="255" text-anchor="middle" class="label">USB-C 朝上</text>
+  <text x="800" y="325" text-anchor="middle" class="title" fill="#f8fafc">STM32F411CEU6</text>
+  <text x="800" y="356" text-anchor="middle" class="subtitle" fill="#e5e7eb">WeAct STM32F4x1Cx v2.0+</text>
+  <rect x="740" y="440" width="120" height="120" rx="18" fill="#0f172a" stroke="#fbbf24" stroke-width="3"/>
+  <text x="800" y="508" text-anchor="middle" class="label" fill="#f8fafc">MCU</text>
+  <rect x="710" y="810" width="180" height="48" rx="8" class="header"/>
+  <text x="800" y="840" text-anchor="middle" class="small">SWD: 3V3 DIO SCLK GND</text>
+
+  <!-- STM32 left header pins -->
+  <g id="left-header">
+    <text x="530" y="170" text-anchor="middle" class="label">STM32 左排母座</text>
+    <rect x="515" y="185" width="60" height="710" rx="8" class="header"/>
+    <g>
+      <rect x="525" y="200" width="40" height="28" class="pin"/><text x="545" y="219" text-anchor="middle" class="tiny">B12</text>
+      <rect x="525" y="234" width="40" height="28" class="pin"/><text x="545" y="253" text-anchor="middle" class="tiny">B13</text>
+      <rect x="525" y="268" width="40" height="28" class="pin"/><text x="545" y="287" text-anchor="middle" class="tiny">B14</text>
+      <rect x="525" y="302" width="40" height="28" class="pin"/><text x="545" y="321" text-anchor="middle" class="tiny">B15</text>
+      <rect x="525" y="336" width="40" height="28" class="pin"/><text x="545" y="355" text-anchor="middle" class="tiny">A8</text>
+      <rect x="525" y="370" width="40" height="28" class="pin-uart"/><text x="545" y="389" text-anchor="middle" class="tiny">A9</text>
+      <rect x="525" y="404" width="40" height="28" class="pin-uart"/><text x="545" y="423" text-anchor="middle" class="tiny">A10</text>
+      <rect x="525" y="438" width="40" height="28" class="pin"/><text x="545" y="457" text-anchor="middle" class="tiny">A11</text>
+      <rect x="525" y="472" width="40" height="28" class="pin"/><text x="545" y="491" text-anchor="middle" class="tiny">A12</text>
+      <rect x="525" y="506" width="40" height="28" class="pin"/><text x="545" y="525" text-anchor="middle" class="tiny">A15</text>
+      <rect x="525" y="540" width="40" height="28" class="pin"/><text x="545" y="559" text-anchor="middle" class="tiny">B3</text>
+      <rect x="525" y="574" width="40" height="28" class="pin"/><text x="545" y="593" text-anchor="middle" class="tiny">B4</text>
+      <rect x="525" y="608" width="40" height="28" class="pin"/><text x="545" y="627" text-anchor="middle" class="tiny">B5</text>
+      <rect x="525" y="642" width="40" height="28" class="pin"/><text x="545" y="661" text-anchor="middle" class="tiny">B6</text>
+      <rect x="525" y="676" width="40" height="28" class="pin"/><text x="545" y="695" text-anchor="middle" class="tiny">B7</text>
+      <rect x="525" y="710" width="40" height="28" class="pin-dir"/><text x="545" y="729" text-anchor="middle" class="tiny">B8</text>
+      <rect x="525" y="744" width="40" height="28" class="pin-dir"/><text x="545" y="763" text-anchor="middle" class="tiny">B9</text>
+      <rect x="525" y="778" width="40" height="28" class="pin"/><text x="545" y="797" text-anchor="middle" class="tiny">5V</text>
+      <rect x="525" y="812" width="40" height="28" class="pin-gnd"/><text x="545" y="831" text-anchor="middle" class="pin-gnd-text">G</text>
+      <rect x="525" y="846" width="40" height="28" class="pin"/><text x="545" y="865" text-anchor="middle" class="tiny">3V3</text>
+    </g>
+  </g>
+
+  <!-- STM32 right header pins -->
+  <g id="right-header">
+    <text x="1070" y="170" text-anchor="middle" class="label">STM32 右排母座</text>
+    <rect x="1025" y="185" width="60" height="710" rx="8" class="header"/>
+    <g>
+      <rect x="1035" y="200" width="40" height="28" class="pin"/><text x="1055" y="219" text-anchor="middle" class="tiny">5V</text>
+      <rect x="1035" y="234" width="40" height="28" class="pin-gnd"/><text x="1055" y="253" text-anchor="middle" class="pin-gnd-text">G</text>
+      <rect x="1035" y="268" width="40" height="28" class="pin"/><text x="1055" y="287" text-anchor="middle" class="tiny">3V3</text>
+      <rect x="1035" y="302" width="40" height="28" class="pin"/><text x="1055" y="321" text-anchor="middle" class="tiny">B10</text>
+      <rect x="1035" y="336" width="40" height="28" class="pin"/><text x="1055" y="355" text-anchor="middle" class="tiny">B2</text>
+      <rect x="1035" y="370" width="40" height="28" class="pin-pwm"/><text x="1055" y="389" text-anchor="middle" class="tiny">B1</text>
+      <rect x="1035" y="404" width="40" height="28" class="pin-pwm"/><text x="1055" y="423" text-anchor="middle" class="tiny">B0</text>
+      <rect x="1035" y="438" width="40" height="28" class="pin-pwm"/><text x="1055" y="457" text-anchor="middle" class="tiny">A7</text>
+      <rect x="1035" y="472" width="40" height="28" class="pin-pwm"/><text x="1055" y="491" text-anchor="middle" class="tiny">A6</text>
+      <rect x="1035" y="506" width="40" height="28" class="pin-dir"/><text x="1055" y="525" text-anchor="middle" class="tiny">A5</text>
+      <rect x="1035" y="540" width="40" height="28" class="pin-dir"/><text x="1055" y="559" text-anchor="middle" class="tiny">A4</text>
+      <rect x="1035" y="574" width="40" height="28" class="pin-dir"/><text x="1055" y="593" text-anchor="middle" class="tiny">A3</text>
+      <rect x="1035" y="608" width="40" height="28" class="pin-dir"/><text x="1055" y="627" text-anchor="middle" class="tiny">A2</text>
+      <rect x="1035" y="642" width="40" height="28" class="pin-dir"/><text x="1055" y="661" text-anchor="middle" class="tiny">A1</text>
+      <rect x="1035" y="676" width="40" height="28" class="pin-dir"/><text x="1055" y="695" text-anchor="middle" class="tiny">A0</text>
+      <rect x="1035" y="710" width="40" height="28" class="pin"/><text x="1055" y="729" text-anchor="middle" class="tiny">R</text>
+      <rect x="1035" y="744" width="40" height="28" class="pin"/><text x="1055" y="763" text-anchor="middle" class="tiny">C15</text>
+      <rect x="1035" y="778" width="40" height="28" class="pin"/><text x="1055" y="797" text-anchor="middle" class="tiny">C14</text>
+      <rect x="1035" y="812" width="40" height="28" class="pin"/><text x="1055" y="831" text-anchor="middle" class="tiny">C13</text>
+      <rect x="1035" y="846" width="40" height="28" class="pin"/><text x="1055" y="865" text-anchor="middle" class="tiny">VB</text>
+    </g>
+  </g>
+
+  <!-- Left driver module -->
+  <rect x="115" y="360" width="300" height="420" rx="18" class="module"/>
+  <text x="265" y="395" text-anchor="middle" class="label" fill="#f8fafc">TB6612-A 左侧驱动板</text>
+  <text x="265" y="423" text-anchor="middle" class="small" fill="#cbd5e1">电机1=左上 LF，电机2=左下 LR</text>
+  <rect x="145" y="455" width="100" height="58" class="motor"/><text x="195" y="478" text-anchor="middle" class="small">J_M_LF</text><text x="195" y="498" text-anchor="middle" class="tiny">左上 M+/M-</text>
+  <rect x="145" y="625" width="100" height="58" class="motor"/><text x="195" y="648" text-anchor="middle" class="small">J_M_LR</text><text x="195" y="668" text-anchor="middle" class="tiny">左下 M+/M-</text>
+  <rect x="285" y="455" width="98" height="250" class="connector"/>
+  <text x="334" y="480" text-anchor="middle" class="small">控制排针</text>
+  <text x="334" y="510" text-anchor="middle" class="tiny">1P ← PA6</text>
+  <text x="334" y="535" text-anchor="middle" class="tiny">1IN1 ← PA0</text>
+  <text x="334" y="560" text-anchor="middle" class="tiny">1IN2 ← PA1</text>
+  <text x="334" y="585" text-anchor="middle" class="tiny">G ← GND</text>
+  <text x="334" y="620" text-anchor="middle" class="tiny">2P ← PA7</text>
+  <text x="334" y="645" text-anchor="middle" class="tiny">2IN1 ← PA2</text>
+  <text x="334" y="670" text-anchor="middle" class="tiny">2IN2 ← PA3</text>
+  <text x="334" y="695" text-anchor="middle" class="tiny">G ← GND</text>
+
+  <!-- Right driver module -->
+  <rect x="1185" y="360" width="300" height="420" rx="18" class="module"/>
+  <text x="1335" y="395" text-anchor="middle" class="label" fill="#f8fafc">TB6612-B 右侧驱动板</text>
+  <text x="1335" y="423" text-anchor="middle" class="small" fill="#cbd5e1">电机1=右上 RF，电机2=右下 RR</text>
+  <rect x="1355" y="455" width="100" height="58" class="motor"/><text x="1405" y="478" text-anchor="middle" class="small">J_M_RF</text><text x="1405" y="498" text-anchor="middle" class="tiny">右上 M+/M-</text>
+  <rect x="1355" y="625" width="100" height="58" class="motor"/><text x="1405" y="648" text-anchor="middle" class="small">J_M_RR</text><text x="1405" y="668" text-anchor="middle" class="tiny">右下 M+/M-</text>
+  <rect x="1217" y="455" width="98" height="250" class="connector"/>
+  <text x="1266" y="480" text-anchor="middle" class="small">控制排针</text>
+  <text x="1266" y="510" text-anchor="middle" class="tiny">1P ← PB0</text>
+  <text x="1266" y="535" text-anchor="middle" class="tiny">1IN1 ← PA4</text>
+  <text x="1266" y="560" text-anchor="middle" class="tiny">1IN2 ← PA5</text>
+  <text x="1266" y="585" text-anchor="middle" class="tiny">G ← GND</text>
+  <text x="1266" y="620" text-anchor="middle" class="tiny">2P ← PB1</text>
+  <text x="1266" y="645" text-anchor="middle" class="tiny">2IN1 ← PB8</text>
+  <text x="1266" y="670" text-anchor="middle" class="tiny">2IN2 ← PB9</text>
+  <text x="1266" y="695" text-anchor="middle" class="tiny">G ← GND</text>
+
+  <!-- Routing bundles, drawn as conceptual PCB trace corridors -->
+  <path d="M565 418 C505 400, 445 350, 310 265" class="route-uart"/>
+  <path d="M565 384 C500 365, 440 315, 220 245" class="route-uart"/>
+  <path d="M545 826 C500 870, 410 910, 300 880 C220 860, 150 760, 145 715" class="route-gnd"/>
+  <path d="M1055 490 C935 530, 760 710, 383 535" class="route-bus"/>
+  <path d="M1055 456 C930 500, 770 675, 383 620" class="route-bus"/>
+  <path d="M1055 695 C920 725, 740 720, 383 535" class="route-bus"/>
+  <path d="M1055 423 C1130 430, 1190 475, 1217 510" class="route-pwm"/>
+  <path d="M1055 558 C1135 555, 1190 545, 1217 535" class="route-dir"/>
+  <path d="M1055 524 C1135 530, 1190 550, 1217 560" class="route-dir"/>
+  <path d="M1055 389 C1130 475, 1185 570, 1217 620" class="route-pwm"/>
+  <path d="M545 729 C700 810, 1010 790, 1217 645" class="route-dir"/>
+  <path d="M545 763 C710 840, 1030 825, 1217 670" class="route-dir"/>
+  <path d="M862 974 C1030 920, 1160 805, 1266 700" class="route-gnd"/>
+  <path d="M862 974 C645 920, 490 810, 334 700" class="route-gnd"/>
+  <path d="M737 974 C540 915, 380 785, 265 780" class="route-power"/>
+  <path d="M737 974 C1025 905, 1200 790, 1335 780" class="route-power"/>
+
+  <!-- Notes -->
+  <rect x="90" y="820" width="445" height="185" rx="12" class="note"/>
+  <text x="112" y="850" class="label">走线建议</text>
+  <text x="112" y="880" class="small">1. 两层 PCB：顶层优先走短控制线，底层铺 GND。</text>
+  <text x="112" y="908" class="small">2. STM32 到左侧 TB6612 的控制线可从板底过孔走。</text>
+  <text x="112" y="936" class="small">3. 四个电机接口放四角，外部电机线不需要互相跨越。</text>
+  <text x="112" y="964" class="small">4. 每根 PWM/IN 建议预留 10k 下拉与测试点。</text>
+  <text x="112" y="992" class="small">5. RDK 只接 UART 与 GND，不给电机供电。</text>
+
+  <rect x="1065" y="820" width="420" height="185" rx="12" class="note"/>
+  <text x="1087" y="850" class="label">颜色图例</text>
+  <rect x="1088" y="872" width="28" height="14" class="pin-uart"/><text x="1126" y="885" class="small">UART：RDK Pin8/10 ↔ STM32 PA10/PA9</text>
+  <rect x="1088" y="900" width="28" height="14" class="pin-pwm"/><text x="1126" y="913" class="small">PWM：PA6/PA7/PB0/PB1 → 1P/2P</text>
+  <rect x="1088" y="928" width="28" height="14" class="pin-dir"/><text x="1126" y="941" class="small">方向：PA0..PA5/PB8/PB9 → IN1/IN2</text>
+  <rect x="1088" y="956" width="28" height="14" class="pin-gnd"/><text x="1126" y="969" class="small">地：RDK、STM32、TB6612、电机电源负极共地</text>
+  <rect x="1088" y="984" width="28" height="14" class="power"/><text x="1126" y="997" class="small">电机电源：只进入 TB6612，不从 RDK 取电</text>
+</svg>

@@ -1,0 +1,18 @@
+# Example patrol waypoints (map frame), flat x,y,yaw triples. Edit for your map.
+# Run: ros2 run chassis_bringup waypoint_patrol --ros-args --params-file <this file>
+waypoint_patrol:
+  ros__parameters:
+    loop: true
+    waypoints:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+      - 0.0
+      - 0.0
+      - 1.0
+      - 1.0
+      - 1.5708
+      - 0.0
+      - 1.0
+      - 3.1416
