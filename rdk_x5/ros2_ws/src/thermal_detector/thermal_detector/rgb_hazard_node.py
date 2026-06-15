@@ -22,6 +22,7 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String
 
 from .fusion import Detection
+from .image_geometry import unrotate_box
 from .ros_payloads import encode_detections
 
 
@@ -80,10 +81,13 @@ class RgbHazardNode(Node):
 
     def _tick(self) -> None:
         try:
-            frame = self.camera.read_bgr()
+            native = self.camera.read_bgr()  # camera's native orientation
         except Exception as exc:
             self.get_logger().warn(f"camera read failed: {exc}")
             return
+        nh, nw = native.shape[:2]
+
+        infer = native
         if self.rotate_deg:
             import cv2
 
@@ -93,17 +97,21 @@ class RgbHazardNode(Node):
                 270: cv2.ROTATE_90_COUNTERCLOCKWISE,
             }
             if self.rotate_deg in rotmap:
-                frame = cv2.rotate(frame, rotmap[self.rotate_deg])
-        h, w = frame.shape[:2]
-        inputs = self.model.pre_process(frame)
+                infer = cv2.rotate(native, rotmap[self.rotate_deg])
+        ih, iw = infer.shape[:2]
+        inputs = self.model.pre_process(infer)
         outputs = self.model.forward(inputs)
-        boxes, cls_ids, scores = self.model.post_process(outputs, w, h)
+        boxes, cls_ids, scores = self.model.post_process(outputs, iw, ih)
 
         detections = []
         for box, cls_id, score in zip(boxes, cls_ids, scores):
+            # boxes are in the rotated inference frame -> map back to native pixels
+            native_box = unrotate_box(box, self.rotate_deg, nw, nh)
             cid = int(cls_id)
             label = self.labels[cid] if cid < len(self.labels) else str(cid)
-            detections.append(Detection(cid, label, float(score), tuple(float(v) for v in box)))
+            detections.append(
+                Detection(cid, label, float(score), tuple(float(v) for v in native_box))
+            )
 
         now = self.get_clock().now()
         msg = String()
@@ -114,11 +122,11 @@ class RgbHazardNode(Node):
             img = Image()
             img.header.stamp = now.to_msg()
             img.header.frame_id = self.frame_id
-            img.height, img.width = int(h), int(w)
+            img.height, img.width = int(nh), int(nw)
             img.encoding = "bgr8"
             img.is_bigendian = 0
-            img.step = int(w * 3)
-            img.data = frame.tobytes()
+            img.step = int(nw * 3)
+            img.data = native.tobytes()
             self.color_pub.publish(img)
 
     def destroy_node(self) -> None:
