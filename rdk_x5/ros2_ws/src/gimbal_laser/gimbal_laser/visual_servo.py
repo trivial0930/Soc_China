@@ -25,6 +25,7 @@ class ServoConfig:
     gain: float = 0.6  # fraction of the angular error applied per step (damping)
     deadband_px: float = 30.0  # target within this radius of centre = centred
     max_step_deg: float = 8.0  # per-iteration slew cap
+    swap_axes: bool = False  # camera mounted 90deg on gimbal: image-x->tilt, image-y->pan
     invert_pan: bool = False
     invert_tilt: bool = True  # image y grows downward; tilt+ is usually up
     pan_min_deg: float = -60.0
@@ -65,8 +66,11 @@ def servo_step(
 
     sign_pan = -1.0 if cfg.invert_pan else 1.0
     sign_tilt = -1.0 if cfg.invert_tilt else 1.0
-    dpan = _clamp(sign_pan * cfg.gain * ang_x, -cfg.max_step_deg, cfg.max_step_deg)
-    dtilt = _clamp(sign_tilt * cfg.gain * ang_y, -cfg.max_step_deg, cfg.max_step_deg)
+    # swap_axes: gimbal-mounted camera rolled 90deg, so image-y drives pan, image-x tilt
+    pan_ang = ang_y if cfg.swap_axes else ang_x
+    tilt_ang = ang_x if cfg.swap_axes else ang_y
+    dpan = _clamp(sign_pan * cfg.gain * pan_ang, -cfg.max_step_deg, cfg.max_step_deg)
+    dtilt = _clamp(sign_tilt * cfg.gain * tilt_ang, -cfg.max_step_deg, cfg.max_step_deg)
 
     new_pan = _clamp(current_pan + dpan, cfg.pan_min_deg, cfg.pan_max_deg)
     new_tilt = _clamp(current_tilt + dtilt, cfg.tilt_min_deg, cfg.tilt_max_deg)
@@ -104,6 +108,7 @@ def config_from_dict(cfg: dict) -> ServoConfig:
         gain=float(cfg.get("gain", d.gain)),
         deadband_px=float(cfg.get("deadband_px", d.deadband_px)),
         max_step_deg=float(cfg.get("max_step_deg", d.max_step_deg)),
+        swap_axes=bool(cfg.get("swap_axes", d.swap_axes)),
         invert_pan=bool(cfg.get("invert_pan", d.invert_pan)),
         invert_tilt=bool(cfg.get("invert_tilt", d.invert_tilt)),
         pan_min_deg=float(cfg.get("pan_min_deg", d.pan_min_deg)),

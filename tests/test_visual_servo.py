@@ -64,6 +64,30 @@ class ServoStepTests(unittest.TestCase):
         self.assertEqual(cmd.pixel_error, (1000 - 960, 600 - 540))
 
 
+class SwapAxesTests(unittest.TestCase):
+    """Camera rolled 90deg on the gimbal: image-y drives pan, image-x drives tilt."""
+
+    def _cfg(self):
+        return ServoConfig(**{**CFG.__dict__, "swap_axes": True, "invert_pan": False, "invert_tilt": False})
+
+    def test_vertical_offset_drives_pan_not_tilt(self):
+        # target below centre (large y), same column -> pan moves, tilt ~0
+        cmd = servo_step(0.0, 0.0, (960, 1080), self._cfg())
+        self.assertNotAlmostEqual(cmd.pan_deg, 0.0)
+        self.assertAlmostEqual(cmd.tilt_deg, 0.0)
+
+    def test_horizontal_offset_drives_tilt_not_pan(self):
+        # target right of centre (large x), same row -> tilt moves, pan ~0
+        cmd = servo_step(0.0, 0.0, (1920, 540), self._cfg())
+        self.assertNotAlmostEqual(cmd.tilt_deg, 0.0)
+        self.assertAlmostEqual(cmd.pan_deg, 0.0)
+
+    def test_no_swap_keeps_x_to_pan(self):
+        cmd = servo_step(0.0, 0.0, (1920, 540), CFG)  # CFG has swap_axes default False
+        self.assertGreater(cmd.pan_deg, 0.0)
+        self.assertAlmostEqual(cmd.tilt_deg, 0.0)
+
+
 class PickTargetTests(unittest.TestCase):
     def test_picks_highest_severity_box_centre(self):
         objects = [
