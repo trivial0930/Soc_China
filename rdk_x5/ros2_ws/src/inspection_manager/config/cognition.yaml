@@ -1,0 +1,15 @@
+# Layer 2 (local cognition) config.
+# backend: "mock" (rule/template, no model — default & demo-ready) | "local_vlm"
+backend: mock
+
+# Free-text scene context appended to the prompt / explanation.
+station_context: "电子实验室巡检"
+
+# Escalation gates (see inspection_manager/escalation.py).
+escalation:
+  # Gate 1 (L1 -> L2): only events at/above this severity and confidence enter cognition.
+  min_severity_for_cognition: warning
+  min_confidence_for_cognition: 0.0
+  # Gate 2 (L2 -> L3): urgent events stay local; cloud only on report request or low confidence.
+  cloud_on_uncertain: true
+  uncertain_below_confidence: 0.45

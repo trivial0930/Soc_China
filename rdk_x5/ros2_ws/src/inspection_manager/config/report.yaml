@@ -1,0 +1,7 @@
+# Layer 3 (on-demand cloud report) config.
+report:
+  # backend: "mock" (template, no model — default) | "cloud" (Claude multimodal, Phase C)
+  backend: mock
+  # Rate limit: at most max_calls cloud reports per window_sec.
+  max_calls: 5
+  window_sec: 3600.0

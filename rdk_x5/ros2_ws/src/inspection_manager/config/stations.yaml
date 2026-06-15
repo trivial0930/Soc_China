@@ -1,0 +1,12 @@
+# Station (工位) mapping. Fill with the real lab layout during on-board bring-up.
+#
+# regions: fixed-camera pixel rectangles -> station_id (detection centre inside rect).
+# waypoints: Nav2 waypoint name -> station_id (also used in reverse for robot recheck).
+
+regions:
+  - {station_id: desk-01, camera: cam-front, rect: [0, 0, 960, 1080]}
+  - {station_id: desk-02, camera: cam-front, rect: [960, 0, 1920, 1080]}
+
+waypoints:
+  wp_desk01: desk-01
+  wp_desk02: desk-02
