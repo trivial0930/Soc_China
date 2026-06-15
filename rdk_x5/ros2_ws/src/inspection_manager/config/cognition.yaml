@@ -3,7 +3,12 @@
 backend: mock
 
 # local_vlm backend: a local Qwen3-VL served by Ollama (OpenAI-compatible).
+# Model tag: try "qwen3-vl:8b"; if Ollama lacks it, fall back to "qwen2.5vl:7b".
 vlm_model: "qwen3-vl:8b"
+# Where Ollama runs (LocalVLMBackend is just HTTP, so this is the only thing to switch):
+#   dev (no RDK):  the Mac itself ->            http://localhost:11434/v1
+#   deploy:        the Win 4080 LAN server ->   http://<win-ip>:11434/v1
+#                  (on that box: set OLLAMA_HOST=0.0.0.0:11434 and open the firewall)
 vlm_base_url: "http://localhost:11434/v1"
 
 # Free-text scene context appended to the prompt / explanation.
