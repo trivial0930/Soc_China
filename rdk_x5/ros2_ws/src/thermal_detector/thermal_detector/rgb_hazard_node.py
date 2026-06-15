@@ -40,6 +40,7 @@ class RgbHazardNode(Node):
         p("camera_fps", 30)
         p("camera_width", 1920)
         p("camera_height", 1072)
+        p("rotate_deg", 0)  # 0/90/180/270 applied to RGB before YOLO + publish (orientation)
         p("publish_rate", 5.0)
         p("publish_color", True)
         p("detections_topic", "/perception/hazard_detections")
@@ -69,6 +70,7 @@ class RgbHazardNode(Node):
             int(gp("camera_fps").value), int(gp("camera_width").value), int(gp("camera_height").value)
         )
         self.publish_color = bool(gp("publish_color").value)
+        self.rotate_deg = int(gp("rotate_deg").value)
         self.frame_id = str(gp("frame_id").value)
 
         self.det_pub = self.create_publisher(String, str(gp("detections_topic").value), 10)
@@ -82,6 +84,16 @@ class RgbHazardNode(Node):
         except Exception as exc:
             self.get_logger().warn(f"camera read failed: {exc}")
             return
+        if self.rotate_deg:
+            import cv2
+
+            rotmap = {
+                90: cv2.ROTATE_90_CLOCKWISE,
+                180: cv2.ROTATE_180,
+                270: cv2.ROTATE_90_COUNTERCLOCKWISE,
+            }
+            if self.rotate_deg in rotmap:
+                frame = cv2.rotate(frame, rotmap[self.rotate_deg])
         h, w = frame.shape[:2]
         inputs = self.model.pre_process(frame)
         outputs = self.model.forward(inputs)
