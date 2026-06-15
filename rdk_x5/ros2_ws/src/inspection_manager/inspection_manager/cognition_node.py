@@ -47,6 +47,7 @@ class CognitionNode(Node):
         self.declare_parameter("brief_topic", "/inspection/brief")
         self.declare_parameter("voice_topic", "/inspection/voice")
         self.declare_parameter("gimbal_topic", "/gimbal/target_angle")
+        self.declare_parameter("recheck_topic", "/inspection/recheck")
         self.declare_parameter("escalate_topic", "/inspection/escalate")
         self.declare_parameter("cognition_config", "")
         self.declare_parameter("stations_config", "")
@@ -64,6 +65,7 @@ class CognitionNode(Node):
         self.brief_pub = self.create_publisher(String, str(self.get_parameter("brief_topic").value), 10)
         self.voice_pub = self.create_publisher(String, str(self.get_parameter("voice_topic").value), 10)
         self.gimbal_pub = self.create_publisher(Vector3, str(self.get_parameter("gimbal_topic").value), 10)
+        self.recheck_pub = self.create_publisher(String, str(self.get_parameter("recheck_topic").value), 10)
         self.escalate_pub = self.create_publisher(String, str(self.get_parameter("escalate_topic").value), 10)
         self.create_subscription(
             String, str(self.get_parameter("events_topic").value), self._on_event, 10
@@ -139,8 +141,13 @@ class CognitionNode(Node):
                     # pan/tilt are filled once #3 visual-servoing lands; log for now.
                     self.get_logger().info(f"aim requested at {action.station_id} (await servoing)")
             elif isinstance(action, RobotRecheck):
-                self.get_logger().info(
-                    f"recheck {action.station_id} -> waypoint {action.waypoint}"
+                self.recheck_pub.publish(
+                    String(
+                        data=json.dumps(
+                            {"station_id": action.station_id, "waypoint": action.waypoint},
+                            ensure_ascii=False,
+                        )
+                    )
                 )
             else:  # LogRecord
                 self._log(action)

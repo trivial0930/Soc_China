@@ -24,6 +24,9 @@ setup(
         "console_scripts": [
             "cognition_node = inspection_manager.cognition_node:main",
             "report_service = inspection_manager.report_service:main",
+            "voice_node = inspection_manager.voice_node:main",
+            "recheck_node = inspection_manager.recheck_node:main",
+            "sim_hazard_publisher = inspection_manager.sim_hazard_publisher:main",
         ],
     },
 )

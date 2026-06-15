@@ -1,0 +1,5 @@
+# Robot-recheck waypoint -> map pose [x, y, yaw(rad)] for Nav2 followWaypoints.
+# Fill with the real lab map poses during on-board bring-up; keys match stations.yaml waypoints.
+poses:
+  wp_desk01: [0.0, 0.0, 0.0]
+  wp_desk02: [1.0, 0.0, 0.0]
