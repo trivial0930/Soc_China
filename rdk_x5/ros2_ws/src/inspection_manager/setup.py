@@ -27,6 +27,7 @@ setup(
             "voice_node = inspection_manager.voice_node:main",
             "recheck_node = inspection_manager.recheck_node:main",
             "sim_hazard_publisher = inspection_manager.sim_hazard_publisher:main",
+            "workstation_record_node = inspection_manager.workstation_record_node:main",
         ],
     },
 )
