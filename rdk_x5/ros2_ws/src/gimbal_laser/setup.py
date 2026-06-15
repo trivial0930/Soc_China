@@ -23,6 +23,7 @@ setup(
     entry_points={
         "console_scripts": [
             "gimbal_controller_node = gimbal_laser.gimbal_controller_node:main",
+            "gimbal_aim_node = gimbal_laser.gimbal_aim_node:main",
         ],
     },
 )

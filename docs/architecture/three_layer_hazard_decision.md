@@ -41,10 +41,13 @@ L1 与 L2/L3 解耦：L1 在 `thermal_detector`，决策聚合层在新包 `insp
 
 `CognitionBackend` / `ReportBackend` 协议 + 工厂（`make_backend` / `make_report_backend`）：
 - **现在**：`MockCognitionBackend`、`MockReportBackend`（规则/模板，确定性、可单测、可演示）。
-- **待接**：`LocalVLMBackend`（本地小 VLM，注入式 client，已有 prompt 拼装 `build_prompt` 与回复解析
-  `parse_vlm_result`，仅缺真实 HTTP/Ollama client）；`CloudReportBackend`（Claude 多模态，注入式 client，
-  Phase C 用 `claude-api` 技能定型号/SDK + API key）。
-  > 两个真实后端的"调用-解析"接线已用 fake client 单测；换真实 client 不动决策逻辑。
+- **真实后端（选型 = 通义千问 Qwen，L2/L3 同源）**，client 已写好(`qwen_client.py`，注入式 transport，
+  用 fake transport 全单测,仅差 API key / Ollama 运行时):
+  - **L2 本地** `LocalVLMBackend` ← `ollama_vlm_client("qwen3-vl:8b")`（本地 Qwen3-VL，Ollama，OpenAI 兼容）。
+  - **L3 云端** `CloudReportBackend` ← `qwen_cloud_client(model="qwen3-vl-plus")`（阿里云百炼 DashScope，
+    OpenAI 兼容；API key 走环境变量 `DASHSCOPE_API_KEY`）。
+  > 两个真实后端的"调用-解析"接线已用 fake transport 单测；换真实 client 不动决策逻辑。
+  > `cognition_node`/`report_service` 在 config `backend: local_vlm`/`cloud` 时自动构造对应 Qwen client。
 
 ## 运行 / 验证（全部 RDK-independent）
 
@@ -54,9 +57,15 @@ L1 与 L2/L3 解耦：L1 在 `thermal_detector`，决策聚合层在新包 `insp
 - 板上：`colcon build --packages-select inspection_manager` 后
   `ros2 launch inspection_manager inspection.launch.py`，订阅 `thermal_detector` 的 `/hazard/events`。
 
-## 明确推迟（上板/之后）
+## 已离板写好 / 明确推迟
 
-1. **#3 检测→云台视觉伺服**：为 `AimGimbal` 填 pan/tilt（相机装在云台上 → 视觉伺服把目标转到画面中心）。
-2. **真实 `LocalVLMBackend`**（本地小 VLM 部署）与 **真实 `CloudReportBackend`**（Claude 多模态 client）。
-3. 动作执行器硬件实效（语音 TTS、Nav2 导航、激光指示）端到端联调。
-4. 工位映射 `stations.yaml` 按真实实验室布局填写；真机调升级阈值。
+**已离板写好（上板只剩接线/调参/给 key）**：
+- **#3 检测→云台视觉伺服**：`gimbal_laser/visual_servo.py`（IBVS 控制律，纯函数，单测）+
+  `gimbal_aim_node`（订阅 `/hazard/status` → `pick_target` → `servo_step` → 发 `/gimbal/target_angle`，
+  enable 门控）+ `config/visual_servo.yaml`。上板只需:确认 FOV、标定 `invert_pan/tilt` 符号、调 `gain/deadband`。
+- **Qwen client**：`inspection_manager/qwen_client.py`（L2 Ollama + L3 百炼，OpenAI 兼容，注入式 transport）。
+
+**仍须上板/之后**：
+1. 给 L2/L3 接真实运行时：本地 Ollama 跑 `qwen3-vl:8b`；百炼 `DASHSCOPE_API_KEY`。
+2. 动作执行器硬件实效（语音 TTS、Nav2 导航、激光指示）端到端联调。
+3. 工位映射 `stations.yaml` 按真实实验室布局填写；真机调升级阈值与伺服增益。

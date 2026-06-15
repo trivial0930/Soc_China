@@ -2,6 +2,10 @@
 # backend: "mock" (rule/template, no model — default & demo-ready) | "local_vlm"
 backend: mock
 
+# local_vlm backend: a local Qwen3-VL served by Ollama (OpenAI-compatible).
+vlm_model: "qwen3-vl:8b"
+vlm_base_url: "http://localhost:11434/v1"
+
 # Free-text scene context appended to the prompt / explanation.
 station_context: "电子实验室巡检"
 

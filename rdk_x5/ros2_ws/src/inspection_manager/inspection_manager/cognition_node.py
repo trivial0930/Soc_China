@@ -57,7 +57,7 @@ class CognitionNode(Node):
         self.policy = policy_from_dict(cfg)
         self.station_context = station_context(cfg)
         self.station_map = station_map_from_dict(stations_cfg)
-        self.backend = make_backend(cognition_backend_name(cfg), policy=self.policy)
+        self.backend = self._build_backend(cognition_backend_name(cfg), cfg)
         self.log_dir = str(self.get_parameter("log_dir").value)
         os.makedirs(self.log_dir, exist_ok=True)
 
@@ -80,6 +80,17 @@ class CognitionNode(Node):
                 return yaml.safe_load(handle) or {}
         except Exception:  # noqa: BLE001 - config is optional; fall back to defaults
             return {}
+
+    def _build_backend(self, name: str, cfg: dict):
+        if name == "local_vlm":
+            from inspection_manager.qwen_client import ollama_vlm_client
+
+            client = ollama_vlm_client(
+                model=str(cfg.get("vlm_model", "qwen3-vl:8b")),
+                base_url=str(cfg.get("vlm_base_url", "http://localhost:11434/v1")),
+            )
+            return make_backend("local_vlm", policy=self.policy, client=client)
+        return make_backend(name, policy=self.policy)
 
     def _on_event(self, msg: String) -> None:
         try:

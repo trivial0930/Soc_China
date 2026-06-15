@@ -23,6 +23,7 @@ def report_settings_from_dict(cfg: dict) -> dict:
     spec = (cfg or {}).get("report") or {}
     return {
         "backend": str(spec.get("backend", "mock")),
+        "model": str(spec.get("model", "qwen3-vl-plus")),
         "max_calls": int(spec.get("max_calls", 5)),
         "window_sec": float(spec.get("window_sec", 3600.0)),
     }

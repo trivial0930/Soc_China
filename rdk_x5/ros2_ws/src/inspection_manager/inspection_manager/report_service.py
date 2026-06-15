@@ -36,7 +36,7 @@ class ReportService(Node):
 
         cfg = self._read_yaml(str(self.get_parameter("report_config").value))
         settings = report_settings_from_dict(cfg)
-        self.backend = make_report_backend(settings["backend"])
+        self.backend = self._build_backend(settings)
         self.limiter = RateLimiter(settings["max_calls"], settings["window_sec"])
         self.reports_dir = str(self.get_parameter("reports_dir").value)
         os.makedirs(self.reports_dir, exist_ok=True)
@@ -64,6 +64,18 @@ class ReportService(Node):
                 return yaml.safe_load(handle) or {}
         except Exception:  # noqa: BLE001 - optional config
             return {}
+
+    def _build_backend(self, settings: dict):
+        if settings["backend"] == "cloud":
+            import os
+
+            from inspection_manager.qwen_client import qwen_cloud_client
+
+            client = qwen_cloud_client(
+                api_key=os.environ.get("DASHSCOPE_API_KEY", ""), model=settings["model"]
+            )
+            return make_report_backend("cloud", client=client)
+        return make_report_backend(settings["backend"])
 
     def _on_escalate(self, msg: String) -> None:
         try:

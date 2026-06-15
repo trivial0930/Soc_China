@@ -1,0 +1,15 @@
+# Detection -> gimbal visual-servoing (gimbal_aim_node). Camera is mounted on the gimbal.
+# On-board: confirm FOV, calibrate invert_pan/invert_tilt signs, tune gain/deadband.
+image_width: 1920
+image_height: 1080
+hfov_deg: 90.0          # RGB camera horizontal FOV (measure/confirm on-board)
+vfov_deg: 68.0
+gain: 0.6               # fraction of angular error applied per step (lower = gentler)
+deadband_px: 30.0       # target within this radius of centre = aimed
+max_step_deg: 8.0       # per-iteration slew cap
+invert_pan: false       # flip if gimbal pans away from the target
+invert_tilt: true       # image y grows downward; tilt+ usually up
+pan_min_deg: -60.0
+pan_max_deg: 60.0
+tilt_min_deg: -30.0
+tilt_max_deg: 45.0
