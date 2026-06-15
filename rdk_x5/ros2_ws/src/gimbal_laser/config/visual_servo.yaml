@@ -1,18 +1,18 @@
 # Detection -> gimbal visual-servoing (gimbal_aim_node). Camera is mounted on the gimbal.
-# Boxes arrive in the camera's NATIVE pixel frame (rgb_hazard un-rotates them).
-# The camera is mounted ~90deg rolled on the gimbal, so swap_axes maps image-y->pan,
-# image-x->tilt. FOV: native-x = camera horizontal (HFOV), native-y = camera vertical (VFOV).
-# On-board: confirm signs (invert_pan/invert_tilt) by watching it centre a target.
+# Boxes arrive in the camera's NATIVE pixel frame (rgb_hazard un-rotates them), where
+# native-x -> pan and native-y -> tilt (no axis swap needed). Validated on hardware
+# 2026-06-16 with a clean scene: an axis probe (pan+8 -> dx=+749/dy=+1; tilt+8 ->
+# dy=+349) gave these signs and the closed loop converged & held a power_strip at centre.
 image_width: 1920
 image_height: 1072
-hfov_deg: 90.0          # native-x (camera horizontal) -> tilt
-vfov_deg: 68.0          # native-y (camera vertical) -> pan
+hfov_deg: 90.0          # native-x (camera horizontal) -> pan
+vfov_deg: 68.0          # native-y (camera vertical) -> tilt
 gain: 0.6               # fraction of angular error applied per step (lower = gentler)
 deadband_px: 40.0       # target within this radius of centre = aimed
 max_step_deg: 8.0       # per-iteration slew cap
-swap_axes: true         # camera rolled 90deg on gimbal: image-y->pan, image-x->tilt
-invert_pan: false       # flip if pan drives the target out of frame
-invert_tilt: false      # flip if tilt drives the target out of frame
+swap_axes: false        # camera readout is rotated, but un-rotation maps to native; no swap
+invert_pan: true        # pan+ drives target +native-x, so invert to centre
+invert_tilt: true       # tilt+ drives target +native-y, so invert to centre
 pan_min_deg: -60.0
 pan_max_deg: 60.0
 tilt_min_deg: -30.0
