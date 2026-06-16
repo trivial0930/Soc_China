@@ -39,7 +39,10 @@ def generate_launch_description():
         Node(
             package="thermal_detector", executable="rgb_hazard_node",
             name="rgb_hazard_node", output="screen",
-            parameters=[{"rotate_deg": rotate_deg}],
+            # publish_color=False: the 6MB/frame color Image throttles the node to
+            # ~0.2Hz and starves /perception/hazard_detections. Fusion only needs
+            # detections; keep the viz image off for headless operation.
+            parameters=[{"rotate_deg": rotate_deg, "publish_color": False}],
         ),
         Node(
             package="thermal_detector", executable="thermal_detector_node",
