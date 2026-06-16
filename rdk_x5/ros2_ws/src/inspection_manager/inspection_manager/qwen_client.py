@@ -54,12 +54,14 @@ class OpenAICompatVLMClient:
         api_key: str = "",
         transport: Optional[Transport] = None,
         encode: Callable[[str], str] = encode_image,
+        timeout_s: float = 120.0,
     ) -> None:
         self.model = model
         self.base_url = base_url
         self.api_key = api_key
         self._transport = transport
         self._encode = encode
+        self.timeout_s = timeout_s
 
     def complete(self, prompt: str, images: List[str]) -> str:
         uris = [self._encode(path) for path in images]
@@ -68,12 +70,27 @@ class OpenAICompatVLMClient:
             return self._transport(messages, self.model)
         return self._default_transport(messages)
 
-    def _default_transport(self, messages: List[dict]) -> str:  # pragma: no cover - needs SDK + key
-        from openai import OpenAI
+    def _default_transport(self, messages: List[dict]) -> str:  # pragma: no cover - needs a server
+        # Stdlib urllib POST to the OpenAI-compatible /chat/completions endpoint.
+        # Deliberately NOT the openai SDK: the RDK X5 has no internet to pip-install
+        # it, and the endpoint is plain HTTP/JSON. Same call works for Ollama (local)
+        # and DashScope (cloud) — only base_url/api_key differ.
+        import json
+        import urllib.request
 
-        client = OpenAI(api_key=self.api_key, base_url=self.base_url)
-        resp = client.chat.completions.create(model=self.model, messages=messages)
-        return resp.choices[0].message.content or ""
+        body = json.dumps({"model": self.model, "messages": messages}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url.rstrip('/')}/chat/completions",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key or 'ollama'}",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return data["choices"][0]["message"]["content"] or ""
 
 
 def qwen_cloud_client(
