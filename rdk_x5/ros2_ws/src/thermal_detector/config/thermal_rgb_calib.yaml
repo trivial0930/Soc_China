@@ -1,21 +1,29 @@
 # RGB <-> Thermal spatial calibration (Phase 2).
 # homography_thermal_to_rgb maps a THERMAL pixel (x,y) to its RGB pixel.
-# Produced by scripts/thermal_rgb_calibrate.py from >=4 point-source correspondences.
 #
-# PLACEHOLDER: the matrix below is a pure resolution scale (thermal 80x62 ->
-# rgb 1920x1072) with NO translation/shear. It is only good enough to smoke-test
-# the pipeline; replace it with a real calibration before trusting alignment.
+# Real calibration captured 2026-06-17 on the co-mounted RGB(1920x1072)+Thermal-90
+# rig via thermal-hotspot<->detection-box correspondences (heat a known object,
+# remove the heat source, snap the thermal argmax against the YOLO box centre).
+# Solved as a robust AFFINE (cv2.estimateAffine2D, RANSAC) -- the scene is roughly
+# planar at working distance and the two lenses are close, so an affine (6 DOF) is
+# more stable than a full homography (8 DOF), which overfit the perspective terms.
+# 4-inlier consensus, ~10 px reprojection in the central region (edges drift more,
+# from lens distortion the affine can't model). Hardware-verified: a heated object
+# is now attributed to its detection box (power_adapter "active" 64C) instead of
+# surfacing as an orphan hotspot.
+#
+# Recapture if the cameras are re-mounted/moved. Bottom row stays [0,0,1] (affine).
 
 rgb_width: 1920
 rgb_height: 1072
 thermal_width: 80
 thermal_height: 62
 
-calibrated: false        # set true once a real calibration is captured
-calibrated_at: null
+calibrated: true
+calibrated_at: 2026-06-17
 
-# 3x3, row-major. Default = diag(1920/80, 1072/62, 1) = diag(24.0, ~17.29, 1).
+# 3x3, row-major (affine: bottom row [0,0,1]).
 homography_thermal_to_rgb:
-  - [24.0, 0.0, 0.0]
-  - [0.0, 17.290322580645161, 0.0]
-  - [0.0, 0.0, 1.0]
+  - [-31.731388, 15.249874, 1743.049067]
+  - [1.926241, 13.123738, 106.823847]
+  - [0.000000, 0.000000, 1.000000]
