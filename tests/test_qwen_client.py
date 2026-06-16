@@ -70,7 +70,8 @@ class ClientTests(unittest.TestCase):
 
     def test_ollama_client_defaults(self):
         client = ollama_vlm_client(transport=lambda m, model: "x")
-        self.assertEqual(client.model, "qwen3-vl:8b")
+        # qwen2.5vl:7b: qwen3-vl:8b's Ollama build forces ~35s thinking per call.
+        self.assertEqual(client.model, "qwen2.5vl:7b")
         self.assertIn("11434", client.base_url)
 
 

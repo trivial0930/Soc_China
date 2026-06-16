@@ -88,7 +88,7 @@ class CognitionNode(Node):
             from inspection_manager.qwen_client import ollama_vlm_client
 
             client = ollama_vlm_client(
-                model=str(cfg.get("vlm_model", "qwen3-vl:8b")),
+                model=str(cfg.get("vlm_model", "qwen2.5vl:7b")),
                 base_url=str(cfg.get("vlm_base_url", "http://localhost:11434/v1")),
             )
             return make_backend("local_vlm", policy=self.policy, client=client)

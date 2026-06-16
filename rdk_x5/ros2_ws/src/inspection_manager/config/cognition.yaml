@@ -2,9 +2,12 @@
 # backend: "mock" (rule/template, no model — default & demo-ready) | "local_vlm"
 backend: mock
 
-# local_vlm backend: a local Qwen3-VL served by Ollama (OpenAI-compatible).
-# Model tag: try "qwen3-vl:8b"; if Ollama lacks it, fall back to "qwen2.5vl:7b".
-vlm_model: "qwen3-vl:8b"
+# local_vlm backend: a local Qwen-VL served by Ollama (OpenAI-compatible).
+# Use qwen2.5vl:7b — verified on the M5 Pro Mac at ~1.4s warm / 10s cold per call.
+# NOT qwen3-vl:8b: its Ollama packaging forces "thinking" (~1900 reasoning tokens,
+# no working off switch via think/no_think/enable_thinking), making every call ~35s
+# for the same short JSON answer — too slow for event cognition.
+vlm_model: "qwen2.5vl:7b"
 # Where Ollama runs (LocalVLMBackend is just HTTP, so this is the only thing to switch):
 #   dev (no RDK):  the Mac itself ->            http://localhost:11434/v1
 #   deploy:        the Win 4080 LAN server ->   http://<win-ip>:11434/v1

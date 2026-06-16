@@ -86,7 +86,7 @@ def qwen_cloud_client(
 
 
 def ollama_vlm_client(
-    model: str = "qwen3-vl:8b",
+    model: str = "qwen2.5vl:7b",
     base_url: str = OLLAMA_OPENAI_BASE,
     transport: Optional[Transport] = None,
     **kwargs,
