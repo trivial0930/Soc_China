@@ -216,10 +216,11 @@ def create_pysenxor_backend(
     fps: float = 7.0,             # at 1MHz one frame read takes ~80ms; >12fps frame period < read
                                   # time -> read/write overlap -> empty frames. 7fps gives margin.
     spi_xfer_size: int = 160,
-    spi_speed_hz: int = 1000000,  # GPIO-CS + jumper routing is marginal >1MHz (4MHz/2MHz give
-                                  # intermittent all-zero frames); 1MHz tested 15/15 clean.
+    spi_speed_hz: int = 4_000_000,  # validated clean at 4MHz once a GND flylead is twisted with
+                                    # SCLK (signal-integrity fix); drop to 1-2MHz only if corrupt.
     cs_high: bool = True,
     cs_gpio_pin: Optional[int] = None,
+    nuc_path: Optional[str] = "/root/thermal_nuc.npy",
 ) -> SenxorBackend:
     """Build a backend backed by the installed Pysenxor (``senxor``) library (RDK only).
 
@@ -287,22 +288,81 @@ def create_pysenxor_backend(
             pass
     spi = _Xfer3SPI(spi_dev, xfer_size=spi_xfer_size, cs=cs)
 
+    # Prevent an AttributeError crash during construction when the chip has a
+    # backlog frame: MI48.error_handler -> read -> read_raw expects this class attr.
+    MI48.read_raw = False
+
     mi48 = MI48([i2c, spi])  # __init__ runs get_camera_info() -> sets fpa_shape
-    return _PysenxorBackend(mi48, DATA_READY, fps)
+    return _PysenxorBackend(mi48, DATA_READY, fps, nuc_path=nuc_path)
+
+
+def _repair_bad_rows(c):  # pragma: no cover - requires numpy / board frames
+    """Interpolate bad rows: the fixed row47/48 FPN plus any residual row outliers.
+
+    After NUC subtraction most fixed-pattern noise is gone, but rows 47/48 are not
+    a pure offset (true bad rows) so they leave occasional horizontal streaks.
+    Replace flagged rows with a 5x1 vertical median (validated on the bench:
+    removes streaks without disturbing real temperature gradients).
+    """
+    import numpy as np
+
+    H, W = c.shape
+    rm = np.median(c, axis=1)
+    smooth = np.array([np.median(rm[max(0, i - 2):i + 3]) for i in range(H)])
+    bad = np.abs(rm - smooth) > 1.5
+    if H > 48:
+        bad[47] = True
+        bad[48] = True
+    if bad.any():
+        pad = np.pad(c, ((2, 2), (0, 0)), mode="edge")
+        vmed = np.median(np.stack([pad[i:i + H] for i in range(5)], axis=0), axis=0).astype(np.float32)
+        c = c.copy()
+        c[bad] = vmed[bad]
+    return c
 
 
 class _PysenxorBackend:  # pragma: no cover - requires board hardware
-    """Adapter over a constructed Pysenxor MI48 (verified vs Pysenxor 1.4.1)."""
+    """Adapter over a constructed Pysenxor MI48 (verified vs Pysenxor 1.4.1).
 
-    def __init__(self, mi48, data_ready_flag, fps: float) -> None:
+    Reads in **single-frame** mode (``start(stream=False)`` per frame) to avoid the
+    continuous-stream frame-boundary misalignment (random phase each start), and
+    applies a fixed-pattern **NUC** offset (uniform-scene calibration) + known
+    **bad-row** repair so the returned Celsius frame is clean: no column stripes,
+    no row47/48 FPN, and no dead-pixel false hotspots (the latter previously broke
+    argmax-based localisation). The NUC is per-module / mildly temperature-dependent;
+    recapture (lens covered, uniform surface) if you swap modules or ambient shifts.
+    """
+
+    def __init__(self, mi48, data_ready_flag, fps: float, nuc_path: Optional[str] = None) -> None:
         self._mi48 = mi48
         self._data_ready_flag = data_ready_flag
         self._fps = fps
+        self._nuc = self._load_nuc(nuc_path)
+
+    @staticmethod
+    def _load_nuc(path):
+        import numpy as np
+
+        if path:
+            try:
+                arr = np.load(path).astype(np.float32)
+                if arr.shape == (THERMAL_HEIGHT, THERMAL_WIDTH):
+                    print(f"[thermal] NUC loaded from {path}", flush=True)
+                    return arr
+                print(f"[warn] NUC {path} shape {arr.shape} != "
+                      f"({THERMAL_HEIGHT},{THERMAL_WIDTH}); ignoring", flush=True)
+            except FileNotFoundError:
+                print(f"[warn] NUC {path} not found; running without NUC "
+                      f"(stripes/FPN remain). Capture one with the bench tool.", flush=True)
+            except Exception as exc:
+                print(f"[warn] NUC load failed ({path}): {exc}; running without NUC", flush=True)
+        return np.zeros((THERMAL_HEIGHT, THERMAL_WIDTH), np.float32)
 
     def start_stream(self) -> None:
-        # This MI48 firmware + Pysenxor flag a header-CRC mismatch even though the
-        # temperature data is valid (verified stable 24-40C across SPI speeds).
-        # Disable header parsing to skip the spurious CRC check / error spam.
+        # Single-frame mode: each frame is triggered in read_celsius_frame(), so we
+        # only configure here (no continuous stream start).
+        # This MI48 firmware + Pysenxor flag a spurious header-CRC mismatch even
+        # though the data is valid; disable header parsing to skip the error spam.
         try:
             self._mi48.parse_header = False
         except Exception:
@@ -316,11 +376,12 @@ class _PysenxorBackend:  # pragma: no cover - requires board hardware
                 self._mi48.set_offset_corr(0.0)
         except Exception:
             pass
-        self._mi48.start(stream=True, with_header=True)
 
     def read_celsius_frame(self) -> Sequence[float]:
         import time
+        import numpy as np
 
+        self._mi48.start(stream=False, with_header=True)  # trigger one fresh frame
         for _ in range(400):  # ~1s budget at 2.5ms poll
             if self._mi48.get_status() & self._data_ready_flag:
                 break
@@ -328,7 +389,11 @@ class _PysenxorBackend:  # pragma: no cover - requires board hardware
         data, _header = self._mi48.read()  # flat float array, already Celsius
         if data is None:
             raise RuntimeError("MI48 returned no frame (GFRA); check SPI CS / wiring")
-        return [float(v) for v in data]
+
+        c = np.asarray([float(v) for v in data], np.float32).reshape(THERMAL_HEIGHT, THERMAL_WIDTH)
+        c = c - self._nuc          # subtract fixed-pattern offset (stripes + per-pixel FPN)
+        c = _repair_bad_rows(c)    # mend row47/48 + residual row outliers
+        return [float(v) for v in c.reshape(-1)]
 
     def stop(self) -> None:
         try:
