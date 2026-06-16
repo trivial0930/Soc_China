@@ -34,10 +34,16 @@ class ThermalDetectorNode(Node):
         p("spi_device", 1)
         p("i2c_bus", 5)
         p("i2c_address", 0x40)
-        p("reset_pin", 16)
+        # reset_pin <= 0 means "no hardware reset": the BOARD-16 reset line reads
+        # "[Errno 22] Invalid argument" on this RDK X5, and the MI48 boots fine
+        # from a software stop()/bootup() instead. Default disabled.
+        p("reset_pin", 0)
         p("data_ready_pin", 13)
         p("cs_gpio_pin", 7)
-        p("fps", 10.0)
+        # GPIO chip-select + jumper routing is marginal above 1 MHz on the bench
+        # rig, but the validated sensor runs clean at 4 MHz; keep it tunable.
+        p("spi_speed_hz", 4_000_000)
+        p("fps", 7.0)
         p("publish_rate", 5.0)
         p("frame_id", "thermal_90")
         p("temperature_topic", "/thermal/temperature")
@@ -55,11 +61,12 @@ class ThermalDetectorNode(Node):
                 spi_device=int(gp("spi_device").value),
                 i2c_bus=int(gp("i2c_bus").value),
                 i2c_address=int(gp("i2c_address").value),
-                reset_pin=int(gp("reset_pin").value),
+                reset_pin=(int(gp("reset_pin").value) or None),
                 data_ready_pin=int(gp("data_ready_pin").value),
                 cs_gpio_pin=int(gp("cs_gpio_pin").value),
                 fps=float(gp("fps").value),
                 spi_xfer_size=10240,
+                spi_speed_hz=int(gp("spi_speed_hz").value),
             )
         self.cam = ThermalCamera(backend=backend)
         self.cam.init()

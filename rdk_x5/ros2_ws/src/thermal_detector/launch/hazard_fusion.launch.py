@@ -27,15 +27,19 @@ def generate_launch_description():
 
     mock_thermal = LaunchConfiguration("mock_thermal")
     station_id = LaunchConfiguration("station_id")
+    rotate_deg = LaunchConfiguration("rotate_deg")
     out_dir = "/root/lab_detector_deploy"
 
     return LaunchDescription([
         DeclareLaunchArgument("mock_thermal", default_value="false"),
         DeclareLaunchArgument("station_id", default_value="desk-01"),
+        # Camera is mounted 90deg-rolled on the gimbal; un-rotate before YOLO.
+        DeclareLaunchArgument("rotate_deg", default_value="90"),
 
         Node(
             package="thermal_detector", executable="rgb_hazard_node",
             name="rgb_hazard_node", output="screen",
+            parameters=[{"rotate_deg": rotate_deg}],
         ),
         Node(
             package="thermal_detector", executable="thermal_detector_node",
