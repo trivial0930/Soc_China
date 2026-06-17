@@ -16,6 +16,12 @@ def generate_launch_description():
             DeclareLaunchArgument("cognition_config", default_value=cognition_cfg),
             DeclareLaunchArgument("stations_config", default_value=stations_cfg),
             DeclareLaunchArgument("report_config", default_value=report_cfg),
+            # Voice broadcast: tts_engine none|espeak|piper; for the USB speaker set
+            # e.g. tts_engine:=piper aplay_device:=plughw:1,0 piper_model:=/root/piper/zh.onnx
+            DeclareLaunchArgument("tts_engine", default_value="none"),
+            DeclareLaunchArgument("aplay_device", default_value=""),
+            DeclareLaunchArgument("piper_bin", default_value="piper"),
+            DeclareLaunchArgument("piper_model", default_value=""),
             Node(
                 package="inspection_manager",
                 executable="cognition_node",
@@ -34,6 +40,20 @@ def generate_launch_description():
                 name="report_service",
                 output="screen",
                 parameters=[{"report_config": LaunchConfiguration("report_config")}],
+            ),
+            Node(
+                package="inspection_manager",
+                executable="voice_node",
+                name="voice_node",
+                output="screen",
+                parameters=[
+                    {
+                        "tts_engine": LaunchConfiguration("tts_engine"),
+                        "aplay_device": LaunchConfiguration("aplay_device"),
+                        "piper_bin": LaunchConfiguration("piper_bin"),
+                        "piper_model": LaunchConfiguration("piper_model"),
+                    }
+                ],
             ),
         ]
     )
