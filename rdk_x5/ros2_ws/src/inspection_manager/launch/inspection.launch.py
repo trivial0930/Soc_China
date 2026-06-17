@@ -16,9 +16,11 @@ def generate_launch_description():
             DeclareLaunchArgument("cognition_config", default_value=cognition_cfg),
             DeclareLaunchArgument("stations_config", default_value=stations_cfg),
             DeclareLaunchArgument("report_config", default_value=report_cfg),
-            # Voice broadcast: tts_engine none|espeak|piper; for the USB speaker set
-            # e.g. tts_engine:=piper aplay_device:=plughw:1,0 piper_model:=/root/piper/zh.onnx
+            # Voice broadcast. Recommended on-board: the sherpa Matcha pipeline via
+            #   tts_engine:=command tts_command:=/root/sherpa_say.sh
+            # (fast ~2s + correct Chinese). Alternatives: espeak | piper.
             DeclareLaunchArgument("tts_engine", default_value="none"),
+            DeclareLaunchArgument("tts_command", default_value=""),
             DeclareLaunchArgument("aplay_device", default_value=""),
             DeclareLaunchArgument("piper_bin", default_value="piper"),
             DeclareLaunchArgument("piper_model", default_value=""),
@@ -49,6 +51,7 @@ def generate_launch_description():
                 parameters=[
                     {
                         "tts_engine": LaunchConfiguration("tts_engine"),
+                        "tts_command": LaunchConfiguration("tts_command"),
                         "aplay_device": LaunchConfiguration("aplay_device"),
                         "piper_bin": LaunchConfiguration("piper_bin"),
                         "piper_model": LaunchConfiguration("piper_model"),

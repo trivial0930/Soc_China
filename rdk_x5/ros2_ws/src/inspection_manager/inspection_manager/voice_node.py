@@ -7,7 +7,11 @@ the prompt text is passed safely (argv/stdin, never a shell string). With engine
 assembly live in tts.py (unit-tested).
 
 Params:
-  tts_engine    : "none" (log only) | "espeak" | "piper"
+  tts_engine    : "none" (log only) | "command" | "espeak" | "piper"
+  tts_command   : for engine "command", the argv prefix; the text is appended as the
+                  final arg (e.g. "/root/sherpa_say.sh" -> a script doing sherpa-onnx
+                  Matcha synth -> ffmpeg gain/resample -> aplay on the USB speaker).
+                  This is the recommended on-board path (fast + correct Chinese).
   aplay_device  : ALSA device for piper playback, e.g. "plughw:1,0" (the USB speaker)
   piper_bin     : path to the piper binary on-board
   piper_model   : path to the piper voice model (.onnx) on-board
@@ -30,7 +34,8 @@ class VoiceNode(Node):
     def __init__(self) -> None:
         super().__init__("voice_node")
         self.declare_parameter("voice_topic", "/inspection/voice")
-        self.declare_parameter("tts_engine", "none")  # none|espeak|piper
+        self.declare_parameter("tts_engine", "none")  # none|command|espeak|piper
+        self.declare_parameter("tts_command", "")  # argv prefix for engine "command"
         self.declare_parameter("aplay_device", "")  # e.g. "plughw:1,0" (USB speaker)
         self.declare_parameter("piper_bin", "piper")
         self.declare_parameter("piper_model", "")
@@ -40,14 +45,17 @@ class VoiceNode(Node):
 
         gp = self.get_parameter
         self.engine = str(gp("tts_engine").value)
-        self.backend = make_tts_backend(
-            self.engine,
-            espeak_voice=str(gp("espeak_voice").value),
-            espeak_speed=int(gp("espeak_speed").value),
-            piper_bin=str(gp("piper_bin").value),
-            piper_model=str(gp("piper_model").value),
-            aplay_device=str(gp("aplay_device").value),
-        )
+        if self.engine == "command":
+            self.backend = make_tts_backend("command", command=str(gp("tts_command").value).split())
+        else:
+            self.backend = make_tts_backend(
+                self.engine,
+                espeak_voice=str(gp("espeak_voice").value),
+                espeak_speed=int(gp("espeak_speed").value),
+                piper_bin=str(gp("piper_bin").value),
+                piper_model=str(gp("piper_model").value),
+                aplay_device=str(gp("aplay_device").value),
+            )
         self.throttle = VoiceThrottle(float(gp("throttle_sec").value))
         self.create_subscription(
             String, str(gp("voice_topic").value), self._on_voice, 10

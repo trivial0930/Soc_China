@@ -15,6 +15,7 @@ from inspection_manager.events import parse_event  # noqa: E402
 from inspection_manager.recheck import parse_recheck, pose_for_waypoint  # noqa: E402
 from inspection_manager.sim_scenarios import make_event, sample_events  # noqa: E402
 from inspection_manager.tts import (  # noqa: E402
+    CommandTTSBackend,
     MockTTSBackend,
     SubprocessTTSBackend,
     VoiceThrottle,
@@ -116,6 +117,29 @@ class SubprocessTTSBackendTests(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             SubprocessTTSBackend(engine="espeak", runner=boom).speak("hi")
+
+
+class CommandTTSBackendTests(unittest.TestCase):
+    def _recorder(self):
+        calls = []
+        return calls, lambda args, stdin_text=None: calls.append((list(args), stdin_text))
+
+    def test_text_is_appended_as_final_argv(self):
+        calls, run = self._recorder()
+        b = CommandTTSBackend(["/root/sherpa_say.sh"], runner=run)
+        nasty = '电烙铁"未关"; rm -rf /'
+        b.speak(nasty)
+        self.assertEqual(calls, [(["/root/sherpa_say.sh", nasty], None)])  # text isolated
+
+    def test_empty_text_or_prefix_noop(self):
+        calls, run = self._recorder()
+        CommandTTSBackend([], runner=run).speak("hi")
+        CommandTTSBackend(["x"], runner=run).speak("")
+        self.assertEqual(calls, [])
+
+    def test_make_tts_backend_command(self):
+        b = make_tts_backend("command", command=["/root/sherpa_say.sh"])
+        self.assertIsInstance(b, CommandTTSBackend)
 
 
 class MakeTTSBackendTests(unittest.TestCase):

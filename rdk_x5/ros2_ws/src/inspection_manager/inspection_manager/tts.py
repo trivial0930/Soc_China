@@ -141,8 +141,32 @@ class SubprocessTTSBackend:
                 pass
 
 
+class CommandTTSBackend:
+    """Runs an external command with the prompt text as the FINAL argv element.
+
+    Injection-safe: the text is a single argv element, never interpolated into a
+    shell string. Used for the on-board synth pipeline that a single command can't
+    express in one engine flag — e.g. a wrapper script ``/root/sherpa_say.sh`` that
+    runs sherpa-onnx Matcha synth -> ffmpeg resample/gain -> aplay on the USB
+    speaker. Lock-serialised so prompts don't overlap.
+    """
+
+    def __init__(self, argv_prefix: List[str], runner: Runner = _subprocess_runner) -> None:
+        self.argv_prefix = list(argv_prefix)
+        self._run = runner
+        self._lock = threading.Lock()
+
+    def speak(self, text: str) -> None:
+        if not text or not self.argv_prefix:
+            return
+        with self._lock:
+            self._run(self.argv_prefix + [text], None)
+
+
 def make_tts_backend(engine: str, **kwargs) -> TTSBackend:
-    """Factory: 'none'/'mock' -> MockTTSBackend (dry-run); else SubprocessTTSBackend."""
+    """Factory: 'none'/'mock' -> dry-run; 'command' -> CommandTTSBackend; else SubprocessTTSBackend."""
     if engine in ("", "none", "mock"):
         return MockTTSBackend()
+    if engine == "command":
+        return CommandTTSBackend(kwargs.get("command", []))
     return SubprocessTTSBackend(engine=engine, **kwargs)

@@ -2,9 +2,54 @@
 
 L2/L3 的 `voice` 动作 → `/inspection/voice` (std_msgs/String) → `voice_node` → USB 音响。
 `voice_node` 与注入安全的 TTS 后端在 `inspection_manager`（`voice_node.py` / `tts.py`），
-已单测。**本文档是有板子时的硬件接入清单**——离线、无需联网/apt。
+已单测。离线、无需联网/apt。
 
-## 离线 TTS 资产（已在开发 Mac 暂存）
+## ✅ 推荐方案 = sherpa-onnx Matcha（已上板验证：~2s、中文正确、注入安全）
+
+对比过几条路（实测于 RDK X5 8×A55 CPU）：
+- **piper（zh huayan）**：快(~1.2s)但 espeak 前端**不分词**,"电烙铁/关闭"等多字词被切开 → 弃。
+- **sherpa MeloTTS（VITS fp32）**：中文正确但 RTF~2 → ~10s,太慢；int8 动态量化在本 ARM 反而 67s（负优化）→ 弃。
+- **sherpa Matcha（flow-matching, 3-step）+ vocos 声码器**：**RTF~0.4 → ~2.2s**,jieba 分词正确,音质好 → **采用**。
+
+USB 音响实测:Jieli `CD002-AUDIO` = `card 0` → 只支持 **48000Hz/立体声**;模型是 22050/44100 单声道,
+故经 **ffmpeg 重采样到 48k 立体声 + 增益(volume=4.5+限幅)**,再 `aplay -D hw:0,0`(直放、不经 plug)。
+板上音量控件名是 **`PCM`**(不是 Master):`amixer -c 0 sset PCM 80%`。
+
+### 资产 & 部署(已在板上 `/root/sherpa/`)
+- `sherpa-onnx-offline-tts`(v1.13.3 linux-aarch64 静态二进制,23MB)
+- `matcha-icefall-zh-baker/`(`model-steps-3.onnx` + lexicon/tokens/dict/FST,~75MB)
+- `vocos-22khz-univ.onnx`(声码器,53MB)
+
+Mac 暂存备份:`~/sherpa_staging/`(binary + matcha + vocos,~170MB,**不入 git**)。重新部署:
+```bash
+ssh root@192.168.128.10 'mkdir -p /root/sherpa'
+scp ~/sherpa_staging/sherpa-onnx-offline-tts root@192.168.128.10:/root/sherpa/
+scp -r ~/sherpa_staging/matcha-icefall-zh-baker ~/sherpa_staging/vocos-22khz-univ.onnx root@192.168.128.10:/root/sherpa/
+ssh root@192.168.128.10 'chmod +x /root/sherpa/sherpa-onnx-offline-tts'
+```
+
+### 封装脚本 `/root/sherpa_say.sh "文本"`（synth→ffmpeg→aplay,文本作 `$1` 安全引用）
+已在板上;内容见本仓库提交。自测:`/root/sherpa_say.sh "检测到三号工位电烙铁未关闭"`。
+
+### 起 voice_node（command 引擎调脚本,文本作 argv 注入安全）
+```bash
+source /opt/ros/humble/setup.bash && source /root/Soc_China/rdk_x5/ros2_ws/install/setup.bash
+ros2 run inspection_manager voice_node --ros-args \
+  -p tts_engine:=command -p tts_command:=/root/sherpa_say.sh
+# 或整条管线:
+ros2 launch inspection_manager inspection.launch.py \
+  tts_engine:=command tts_command:=/root/sherpa_say.sh
+```
+端到端测:`ros2 topic pub --once /inspection/voice std_msgs/msg/String '{data: "三号工位电烙铁未关闭，请立即处理"}'`
+
+> **改 colcon 后必须干净重建**:`rm -rf build/inspection_manager install/inspection_manager` 再 build——
+> ament_python 增量构建有缓存坑,只改 .py 不删旧目录的话 install 里仍是旧代码(实测踩过)。
+
+---
+
+## 备选方案:Piper（机械/会切词,留作兜底,不推荐演示用）
+
+### 离线 TTS 资产（已在开发 Mac 暂存）
 
 `~/piper_staging/`（约 136MB，**不入 git**）：
 - `piper/`  —— Piper 二进制 + 自带库（libonnxruntime / libespeak-ng / libpiper_phonemize）
