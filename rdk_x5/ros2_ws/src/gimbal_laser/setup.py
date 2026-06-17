@@ -24,6 +24,7 @@ setup(
         "console_scripts": [
             "gimbal_controller_node = gimbal_laser.gimbal_controller_node:main",
             "gimbal_aim_node = gimbal_laser.gimbal_aim_node:main",
+            "laser_node = gimbal_laser.laser_node:main",
         ],
     },
 )

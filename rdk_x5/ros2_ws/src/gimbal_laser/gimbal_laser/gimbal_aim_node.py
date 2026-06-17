@@ -35,15 +35,23 @@ class GimbalAimNode(Node):
         self.declare_parameter("angle_topic", "/gimbal/angle")
         self.declare_parameter("enable_topic", "/gimbal/aim_enable")
         self.declare_parameter("target_topic", "/gimbal/target_angle")
+        # Laser marks the hazard being aimed at: on while a target is in view, off
+        # when it clears or aiming stops. Empty topic disables the coupling.
+        self.declare_parameter("laser_topic", "/laser/enable")
         self.declare_parameter("servo_config", "")
 
         self.cfg = config_from_dict(self._read_yaml(str(self.get_parameter("servo_config").value)))
         self.enabled = False
         self.cur_pan = 0.0
         self.cur_tilt = 0.0
+        self._laser_on = False
 
         self.target_pub = self.create_publisher(
             Vector3, str(self.get_parameter("target_topic").value), 10
+        )
+        laser_topic = str(self.get_parameter("laser_topic").value)
+        self.laser_pub = (
+            self.create_publisher(Bool, laser_topic, 10) if laser_topic else None
         )
         self.create_subscription(
             Vector3, str(self.get_parameter("angle_topic").value), self._on_angle, 10
@@ -73,6 +81,15 @@ class GimbalAimNode(Node):
 
     def _on_enable(self, msg: Bool) -> None:
         self.enabled = bool(msg.data)
+        if not self.enabled:
+            self._set_laser(False)  # stop pointing when aiming is disabled
+
+    def _set_laser(self, on: bool) -> None:
+        """Publish laser on/off, de-bounced (only on change)."""
+        if on == self._laser_on or self.laser_pub is None:
+            return
+        self._laser_on = on
+        self.laser_pub.publish(Bool(data=on))
 
     def _on_status(self, msg: String) -> None:
         if not self.enabled:
@@ -82,6 +99,8 @@ class GimbalAimNode(Node):
         except ValueError:
             return
         target = pick_target(objects)
+        # Laser on iff there is a hazard target to point at (stays on once centered).
+        self._set_laser(target is not None)
         if target is None:
             return
         cmd = servo_step(self.cur_pan, self.cur_tilt, target, self.cfg)
