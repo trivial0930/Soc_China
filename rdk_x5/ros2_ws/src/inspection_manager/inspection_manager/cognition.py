@@ -17,6 +17,9 @@ Pure stdlib; no ROS, no model dependency.
 from __future__ import annotations
 
 import json
+import logging
+import socket
+import urllib.error
 from dataclasses import dataclass, field
 from typing import List, Optional, Protocol
 
@@ -193,6 +196,13 @@ def make_backend(name: str, policy: Optional[EscalationPolicy] = None, **kwargs)
     raise ValueError(f"unknown cognition backend: {name}")
 
 
+_LOG = logging.getLogger(__name__)
+
+# Expected "deep unreachable" transport errors -> degrade quietly. Anything else from
+# a backend is unexpected (likely a bug) and is logged before degrading.
+_TIER_OFFLINE_ERRORS = (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError, OSError)
+
+
 class TieredCognitionBackend:
     """Compose fast (L1.5 local VLM) + deep (L2 7B) + rules fallback (策略 D).
 
@@ -242,7 +252,11 @@ class TieredCognitionBackend:
     def _try_deep(self, request: CognitionRequest) -> Optional[CognitionResult]:
         try:
             return self.deep.assess(request)
-        except Exception:  # noqa: BLE001 - any deep failure (offline/error) -> degrade to fast
+        except _TIER_OFFLINE_ERRORS:
+            _LOG.debug("deep backend offline; degrading to fast")
+            return None
+        except Exception:  # noqa: BLE001 - never raise; unexpected error logged then degrade
+            _LOG.warning("deep backend error (not a network outage); degrading to fast", exc_info=True)
             return None
 
     def _fast(self, request: CognitionRequest):
@@ -250,6 +264,7 @@ class TieredCognitionBackend:
         try:
             return self.fast.assess(request), False
         except Exception:  # noqa: BLE001 - local model down -> rules fallback
+            _LOG.warning("fast (L1.5) backend unavailable; degrading to rules fallback", exc_info=True)
             r = self.fallback.assess(request)
             r.reason = "rules fallback (L1.5 unavailable)"
             return r, True

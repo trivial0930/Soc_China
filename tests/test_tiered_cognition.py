@@ -154,6 +154,23 @@ class TieredAssessTests(unittest.TestCase):
         self.assertEqual(fast.calls, 1)
         self.assertIn("rules fallback", out.reason)
 
+    def test_unexpected_deep_error_is_logged(self):
+        fast = FakeBackend(_result(reason="fast"))
+        deep = FakeBackend(raises=RuntimeError("buggy deep"))
+        b = TieredCognitionBackend(fast=fast, deep=deep)
+        with self.assertLogs("inspection_manager.cognition", level="WARNING") as cm:
+            out = b.assess(self._req("critical"))  # still must not raise
+        self.assertIsInstance(out, CognitionResult)
+        self.assertTrue(any("deep backend error" in m for m in cm.output))
+
+    def test_offline_deep_not_logged_as_warning(self):
+        import urllib.error
+        fast = FakeBackend(_result(reason="fast"))
+        deep = FakeBackend(raises=urllib.error.URLError("offline"))
+        b = TieredCognitionBackend(fast=fast, deep=deep)
+        with self.assertNoLogs("inspection_manager.cognition", level="WARNING"):
+            b.assess(self._req("critical"))  # offline is expected -> no warning
+
 
 class TierSettingsTests(unittest.TestCase):
     def test_reads_fast_deep_and_policy(self):
