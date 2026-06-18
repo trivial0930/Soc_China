@@ -92,6 +92,29 @@ class CognitionNode(Node):
                 base_url=str(cfg.get("vlm_base_url", "http://localhost:11434/v1")),
             )
             return make_backend("local_vlm", policy=self.policy, client=client)
+        if name == "tiered":
+            from inspection_manager.qwen_client import ollama_vlm_client
+            from inspection_manager.config import tier_settings_from_dict
+            from inspection_manager.cognition import (
+                LocalVLMBackend,
+                MockCognitionBackend,
+                TieredCognitionBackend,
+            )
+
+            ts = tier_settings_from_dict(cfg)
+            fast = LocalVLMBackend(
+                client=ollama_vlm_client(model=ts["fast_model"], base_url=ts["fast_base_url"]),
+                policy=self.policy,
+            )
+            deep = None
+            if ts["deep_base_url"]:
+                deep = LocalVLMBackend(
+                    client=ollama_vlm_client(model=ts["deep_model"], base_url=ts["deep_base_url"]),
+                    policy=self.policy,
+                )
+            return TieredCognitionBackend(
+                fast=fast, deep=deep, fallback=MockCognitionBackend(self.policy), policy=ts["policy"]
+            )
         return make_backend(name, policy=self.policy)
 
     def _on_event(self, msg: String) -> None:
