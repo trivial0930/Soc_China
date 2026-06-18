@@ -17,6 +17,8 @@ Pure stdlib; no ROS, no model dependency.
 from __future__ import annotations
 
 import json
+import socket
+import urllib.error
 from dataclasses import dataclass, field
 from typing import List, Optional, Protocol
 
@@ -191,3 +193,69 @@ def make_backend(name: str, policy: Optional[EscalationPolicy] = None, **kwargs)
     if name == "local_vlm":  # pragma: no cover - needs a real client on-board
         return LocalVLMBackend(client=kwargs["client"], policy=policy)
     raise ValueError(f"unknown cognition backend: {name}")
+
+
+# Errors from a deep (LAN/cloud) backend that mean "unreachable" -> degrade to fast.
+_TIER_OFFLINE_ERRORS = (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError, OSError)
+
+
+class TieredCognitionBackend:
+    """Compose fast (L1.5 local VLM) + deep (L2 7B) + rules fallback (策略 D).
+
+    Drop-in CognitionBackend. fast/deep are normally LocalVLMBackend instances that
+    differ only by base_url. Branches:
+      * L1-critical & critical_always_deep & deep present -> try deep, else fast.
+      * otherwise -> fast first; escalate to deep only if fast is uncertain (low
+        confidence) or fast itself判 critical. If deep unreachable, keep fast.
+    fast failure degrades to the rules fallback so assess() never raises.
+    """
+
+    def __init__(self, fast, deep=None, fallback=None, policy: Optional[TierPolicy] = None) -> None:
+        self.fast = fast
+        self.deep = deep
+        self.fallback = fallback or MockCognitionBackend()
+        self.policy = policy or TierPolicy()
+
+    def assess(self, request: CognitionRequest) -> CognitionResult:
+        critical = getattr(request.event, "severity", "") == "critical"
+
+        if critical and self.policy.critical_always_deep and self.deep is not None:
+            deep_result = self._try_deep(request)
+            if deep_result is not None:
+                return deep_result
+            result, from_rules = self._fast(request)
+            if not from_rules:
+                result.reason = "L1.5 (L2 offline, L1-critical)"
+            return result
+
+        result, from_rules = self._fast(request)
+        if from_rules:
+            return result
+        if self.deep is not None and self._should_escalate(result):
+            deep_result = self._try_deep(request)
+            if deep_result is not None:
+                return deep_result
+            result.reason = "L1.5 (uncertain, L2 offline)"
+        return result
+
+    def _should_escalate(self, fast_result: CognitionResult) -> bool:
+        if fast_result.confidence < self.policy.escalate_below_confidence:
+            return True
+        if self.policy.escalate_if_fast_critical and fast_result.confirmed_severity == "critical":
+            return True
+        return False
+
+    def _try_deep(self, request: CognitionRequest) -> Optional[CognitionResult]:
+        try:
+            return self.deep.assess(request)
+        except _TIER_OFFLINE_ERRORS:
+            return None
+
+    def _fast(self, request: CognitionRequest):
+        """Return (result, from_rules). fast failure -> rules fallback (never raises)."""
+        try:
+            return self.fast.assess(request), False
+        except Exception:  # noqa: BLE001 - local model down -> rules fallback
+            r = self.fallback.assess(request)
+            r.reason = "rules fallback (L1.5 unavailable)"
+            return r, True
