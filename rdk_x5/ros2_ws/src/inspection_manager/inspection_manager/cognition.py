@@ -52,6 +52,23 @@ class CognitionResult:
     reason: str = ""
 
 
+@dataclass
+class TierPolicy:
+    """Thresholds for TieredCognitionBackend (策略 D). Pure, no model."""
+    escalate_below_confidence: float = 0.6  # fast confidence below this -> escalate to deep
+    critical_always_deep: bool = True       # L1-critical -> prefer deep when online
+    escalate_if_fast_critical: bool = True  # fast itself says critical -> escalate to deep
+
+
+def tier_policy_from_dict(cfg: Optional[dict]) -> TierPolicy:
+    spec = cfg or {}
+    return TierPolicy(
+        escalate_below_confidence=float(spec.get("escalate_below_confidence", 0.6)),
+        critical_always_deep=bool(spec.get("critical_always_deep", True)),
+        escalate_if_fast_critical=bool(spec.get("escalate_if_fast_critical", True)),
+    )
+
+
 class CognitionBackend(Protocol):
     def assess(self, request: CognitionRequest) -> CognitionResult:
         ...
