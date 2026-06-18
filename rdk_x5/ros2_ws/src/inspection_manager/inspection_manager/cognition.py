@@ -17,8 +17,6 @@ Pure stdlib; no ROS, no model dependency.
 from __future__ import annotations
 
 import json
-import socket
-import urllib.error
 from dataclasses import dataclass, field
 from typing import List, Optional, Protocol
 
@@ -195,10 +193,6 @@ def make_backend(name: str, policy: Optional[EscalationPolicy] = None, **kwargs)
     raise ValueError(f"unknown cognition backend: {name}")
 
 
-# Errors from a deep (LAN/cloud) backend that mean "unreachable" -> degrade to fast.
-_TIER_OFFLINE_ERRORS = (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError, OSError)
-
-
 class TieredCognitionBackend:
     """Compose fast (L1.5 local VLM) + deep (L2 7B) + rules fallback (策略 D).
 
@@ -248,7 +242,7 @@ class TieredCognitionBackend:
     def _try_deep(self, request: CognitionRequest) -> Optional[CognitionResult]:
         try:
             return self.deep.assess(request)
-        except _TIER_OFFLINE_ERRORS:
+        except Exception:  # noqa: BLE001 - any deep failure (offline/error) -> degrade to fast
             return None
 
     def _fast(self, request: CognitionRequest):

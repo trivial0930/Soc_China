@@ -112,6 +112,8 @@ class TieredAssessTests(unittest.TestCase):
         b = TieredCognitionBackend(fast=fast, deep=deep)
         out = b.assess(self._req("warning"))
         self.assertIn("L2 offline", out.reason)
+        self.assertEqual(fast.calls, 1)
+        self.assertEqual(deep.calls, 1)
 
     def test_escalate_if_fast_says_critical(self):
         fast = FakeBackend(_result(sev="critical", conf=0.95, reason="fast"))
@@ -135,11 +137,21 @@ class TieredAssessTests(unittest.TestCase):
         out = b.assess(self._req("critical"))
         self.assertEqual(out.reason, "fast")
 
+    def test_deep_non_offline_error_does_not_propagate(self):
+        fast = FakeBackend(_result(reason="fast"))
+        deep = FakeBackend(raises=RuntimeError("buggy deep response"))
+        b = TieredCognitionBackend(fast=fast, deep=deep)
+        out = b.assess(self._req("critical"))  # must NOT raise
+        self.assertIsInstance(out, CognitionResult)
+        self.assertEqual(fast.calls, 1)  # degraded to fast
+
     def test_default_fallback_is_mock(self):
         fast = FakeBackend(raises=RuntimeError("down"))
         b = TieredCognitionBackend(fast=fast)  # no fallback -> MockCognitionBackend
         out = b.assess(self._req("warning"))  # must still return a result, not raise
         self.assertIsInstance(out, CognitionResult)
+        self.assertEqual(fast.calls, 1)
+        self.assertIn("rules fallback", out.reason)
 
 
 if __name__ == "__main__":
