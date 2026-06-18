@@ -16,6 +16,7 @@ from inspection_manager.cognition import (  # noqa: E402
     TieredCognitionBackend,
 )
 from inspection_manager.events import HazardEvent  # noqa: E402
+from inspection_manager.config import tier_settings_from_dict  # noqa: E402
 
 
 class TierPolicyTests(unittest.TestCase):
@@ -152,6 +153,32 @@ class TieredAssessTests(unittest.TestCase):
         self.assertIsInstance(out, CognitionResult)
         self.assertEqual(fast.calls, 1)
         self.assertIn("rules fallback", out.reason)
+
+
+class TierSettingsTests(unittest.TestCase):
+    def test_reads_fast_deep_and_policy(self):
+        cfg = {
+            "backend": "tiered",
+            "tier": {
+                "fast": {"vlm_model": "qwen2-vl:2b", "vlm_base_url": "http://localhost:8080/v1"},
+                "deep": {"vlm_model": "qwen2.5vl:7b", "vlm_base_url": "http://192.168.128.100:11434/v1"},
+                "policy": {"escalate_below_confidence": 0.5},
+            },
+        }
+        s = tier_settings_from_dict(cfg)
+        self.assertEqual(s["fast_model"], "qwen2-vl:2b")
+        self.assertEqual(s["fast_base_url"], "http://localhost:8080/v1")
+        self.assertEqual(s["deep_base_url"], "http://192.168.128.100:11434/v1")
+        self.assertEqual(s["policy"].escalate_below_confidence, 0.5)
+
+    def test_missing_deep_means_empty_base_url(self):
+        s = tier_settings_from_dict({"tier": {"fast": {"vlm_model": "m"}}})
+        self.assertEqual(s["deep_base_url"], "")  # -> node builds no deep backend
+
+    def test_tolerates_empty_cfg(self):
+        s = tier_settings_from_dict({})
+        self.assertIn("fast_base_url", s)
+        self.assertEqual(s["deep_base_url"], "")
 
 
 if __name__ == "__main__":

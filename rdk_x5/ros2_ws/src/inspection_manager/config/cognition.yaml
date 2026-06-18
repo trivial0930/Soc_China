@@ -1,5 +1,5 @@
 # Layer 2 (local cognition) config.
-# backend: "mock" (rule/template, no model — default & demo-ready) | "local_vlm"
+# backend: "mock" (rule/template — default) | "local_vlm" | "tiered" (L1.5 + L2 + rules)
 backend: mock
 
 # local_vlm backend: a local Qwen-VL served by Ollama (OpenAI-compatible).
@@ -25,3 +25,18 @@ escalation:
   # Gate 2 (L2 -> L3): urgent events stay local; cloud only on report request or low confidence.
   cloud_on_uncertain: true
   uncertain_below_confidence: 0.45
+
+# tiered backend (L1.5 端侧小 VLM + L2 Mac 7B + 规则兜底). Used when backend: tiered.
+# fast = RDK-local small VLM via llama-server/Ollama (OpenAI-compatible, localhost).
+# deep = Mac 7B; leave vlm_base_url empty to disable deep (fast-only / no escalation).
+tier:
+  fast:
+    vlm_model: "qwen2-vl:2b"
+    vlm_base_url: "http://localhost:8080/v1"
+  deep:
+    vlm_model: "qwen2.5vl:7b"
+    vlm_base_url: ""        # e.g. http://192.168.128.100:11434/v1 (Mac); empty -> no deep
+  policy:
+    escalate_below_confidence: 0.6
+    critical_always_deep: true
+    escalate_if_fast_critical: true

@@ -7,6 +7,7 @@ config_loader.py.
 
 from __future__ import annotations
 
+from .cognition import tier_policy_from_dict
 from .escalation import EscalationPolicy, policy_from_dict
 from .station_map import StationMap, station_map_from_dict
 
@@ -26,6 +27,23 @@ def report_settings_from_dict(cfg: dict) -> dict:
         "model": str(spec.get("model", "qwen3-vl-plus")),
         "max_calls": int(spec.get("max_calls", 5)),
         "window_sec": float(spec.get("window_sec", 3600.0)),
+    }
+
+
+def tier_settings_from_dict(cfg: dict) -> dict:
+    """Read the 'tier' block of cognition.yaml -> fast/deep model+base_url + TierPolicy.
+
+    Empty deep_base_url signals 'no deep backend' (the node then builds fast-only).
+    """
+    t = (cfg or {}).get("tier") or {}
+    fast = t.get("fast") or {}
+    deep = t.get("deep") or {}
+    return {
+        "fast_model": str(fast.get("vlm_model", "qwen2-vl:2b")),
+        "fast_base_url": str(fast.get("vlm_base_url", "http://localhost:8080/v1")),
+        "deep_model": str(deep.get("vlm_model", "qwen2.5vl:7b")),
+        "deep_base_url": str(deep.get("vlm_base_url", "")),
+        "policy": tier_policy_from_dict(t.get("policy") or {}),
     }
 
 
