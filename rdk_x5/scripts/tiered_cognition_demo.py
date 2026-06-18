@@ -7,6 +7,7 @@ backends to show the 3-tier degradation (deep -> fast -> rules) and policy D.
 Run: python3 rdk_x5/scripts/tiered_cognition_demo.py
 """
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 PKG = Path(__file__).resolve().parents[1] / "ros2_ws" / "src" / "inspection_manager"
@@ -30,7 +31,7 @@ class Fake:
     def assess(self, request):
         if self.raises is not None:
             raise self.raises
-        return self.result
+        return replace(self.result)
 
 
 def event(severity, summary):
