@@ -182,6 +182,17 @@ class Store:
         self.conn.commit()
         return len(ids)
 
+    def purge_reports_before(self, cutoff_iso: str) -> int:
+        """Delete reports older than cutoff_iso, dated by created_at (fallback received_at).
+        Returns reports deleted. Reports have no child rows to cascade."""
+        cur = self.conn.execute(
+            "DELETE FROM reports "
+            "WHERE julianday(COALESCE(NULLIF(created_at,''), received_at)) < julianday(?)",
+            (cutoff_iso,),
+        )
+        self.conn.commit()
+        return cur.rowcount
+
     # -------------------------------------------------------------------- read
     def _event_row(self, row: sqlite3.Row, with_brief: bool) -> Dict[str, Any]:
         d = {

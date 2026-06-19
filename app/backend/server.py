@@ -32,8 +32,10 @@ async def _retention_sweep() -> None:
         try:
             cutoff = store_mod.iso_days_ago(config.RETENTION_DAYS)
             n = STORE.purge_handled_before(cutoff)
-            if n:
-                print(f"[retention] purged {n} handled events older than {config.RETENTION_DAYS}d", flush=True)
+            nr = STORE.purge_reports_before(cutoff)
+            if n or nr:
+                print(f"[retention] purged {n} handled events + {nr} reports older than "
+                      f"{config.RETENTION_DAYS}d", flush=True)
         except Exception as exc:  # never let the sweep kill the loop
             print(f"[retention] sweep error: {exc}", flush=True)
         await asyncio.sleep(config.RETENTION_SWEEP_SEC)

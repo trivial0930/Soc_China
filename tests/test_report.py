@@ -19,6 +19,7 @@ from inspection_manager.report import (  # noqa: E402
     ReportRequest,
     acceptance_verdict,
     build_report_prompt,
+    expired_report_files,
     make_report_backend,
     worst_severity,
 )
@@ -39,6 +40,15 @@ class HelperTests(unittest.TestCase):
 
     def test_acceptance_verdict_mapping(self):
         self.assertEqual(acceptance_verdict("info"), "合格")
+
+    def test_expired_report_files(self):
+        now = 1_000_000.0
+        day = 86400.0
+        entries = [("old.md", now - 40 * day), ("recent.md", now - 3 * day), ("edge.md", now - 30 * day)]
+        # 30-day window: only 'old' (40d) is strictly older than 30d
+        self.assertEqual(expired_report_files(entries, now, 30 * day), ["old.md"])
+        # disabled (0) keeps everything
+        self.assertEqual(expired_report_files(entries, now, 0), [])
         self.assertEqual(acceptance_verdict("warning"), "需整理")
         self.assertEqual(acceptance_verdict("critical"), "存在安全隐患")
 

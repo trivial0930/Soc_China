@@ -70,6 +70,14 @@ class RateLimiter:
         return True
 
 
+def expired_report_files(entries: List[tuple], now: float, max_age_sec: float) -> List[str]:
+    """Pure retention decision. ``entries`` = list of (name, mtime_epoch).
+    Returns names strictly older than max_age_sec. max_age_sec<=0 keeps everything."""
+    if max_age_sec <= 0:
+        return []
+    return [name for name, mtime in entries if now - mtime > max_age_sec]
+
+
 def worst_severity(events: List[HazardEvent]) -> str:
     worst = "info"
     for e in events:

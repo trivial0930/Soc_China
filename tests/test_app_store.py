@@ -121,6 +121,21 @@ class StoreRetentionTests(unittest.TestCase):
         self.s.upsert_event(ingest.normalize_event(_event(eid="e1")))  # unhandled
         self.assertEqual(self.s.purge_handled_before(store.iso_days_ago(30)), 0)
 
+    def _report_dated(self, title, created_iso):
+        rid = self.s.insert_report(ingest.normalize_report({
+            "title": title, "report_type": "periodic_summary", "verdict": "合格",
+            "severity": "info", "event_ids": [], "body_markdown": "# x", "created_at": created_iso}))
+        return rid
+
+    def test_purge_reports_drops_old_keeps_recent(self):
+        old = self._report_dated("旧报告", store.iso_days_ago(40))
+        new = self._report_dated("新报告", store.iso_days_ago(3))
+        n = self.s.purge_reports_before(store.iso_days_ago(30))
+        self.assertEqual(n, 1)
+        ids = {r["id"] for r in self.s.list_reports()["items"]}
+        self.assertEqual(ids, {new})
+        self.assertIsNone(self.s.get_report(old))
+
 
 class StoreRecordReportTests(unittest.TestCase):
     def setUp(self):

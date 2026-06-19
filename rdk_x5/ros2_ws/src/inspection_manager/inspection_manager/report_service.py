@@ -22,7 +22,9 @@ from std_msgs.msg import String
 
 from inspection_manager.config import report_settings_from_dict
 from inspection_manager.events import parse_event
-from inspection_manager.report import RateLimiter, ReportRequest, make_report_backend
+from inspection_manager.report import (
+    RateLimiter, ReportRequest, expired_report_files, make_report_backend,
+)
 
 
 class ReportService(Node):
@@ -33,6 +35,9 @@ class ReportService(Node):
         self.declare_parameter("report_topic", "/inspection/report")
         self.declare_parameter("report_config", "")
         self.declare_parameter("reports_dir", "inspection_reports")
+        # Auto-delete report .md files older than this many days (0 disables).
+        self.declare_parameter("report_retention_days", 30)
+        self.declare_parameter("retention_sweep_sec", 21600.0)  # 6h
 
         cfg = self._read_yaml(str(self.get_parameter("report_config").value))
         settings = report_settings_from_dict(cfg)
@@ -40,6 +45,11 @@ class ReportService(Node):
         self.limiter = RateLimiter(settings["max_calls"], settings["window_sec"])
         self.reports_dir = str(self.get_parameter("reports_dir").value)
         os.makedirs(self.reports_dir, exist_ok=True)
+        self.retention_days = int(self.get_parameter("report_retention_days").value)
+        self._purge_old_reports()  # sweep once at startup, then on a timer
+        sweep = float(self.get_parameter("retention_sweep_sec").value)
+        if self.retention_days > 0 and sweep > 0:
+            self.create_timer(sweep, self._purge_old_reports)
 
         self._buffer = []  # list of (HazardEvent, brief_text)
 
@@ -52,6 +62,26 @@ class ReportService(Node):
         self.create_subscription(
             String, str(self.get_parameter("request_topic").value), self._on_request, 10
         )
+
+    def _purge_old_reports(self) -> None:
+        """Delete report .md files older than report_retention_days (thin I/O over the pure helper)."""
+        if self.retention_days <= 0:
+            return
+        try:
+            names = [f for f in os.listdir(self.reports_dir) if f.endswith(".md")]
+            entries = [(f, os.path.getmtime(os.path.join(self.reports_dir, f))) for f in names]
+        except OSError:
+            return
+        expired = expired_report_files(entries, time.time(), self.retention_days * 86400.0)
+        removed = 0
+        for name in expired:
+            try:
+                os.remove(os.path.join(self.reports_dir, name))
+                removed += 1
+            except OSError:
+                pass
+        if removed:
+            self.get_logger().info(f"purged {removed} reports older than {self.retention_days}d")
 
     @staticmethod
     def _read_yaml(path: str) -> dict:
