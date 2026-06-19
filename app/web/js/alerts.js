@@ -5,7 +5,7 @@ const Alerts = (() => {
   let filter = ""; // "" | critical | warning | unhandled
 
   function card(e) {
-    const sev = API.sevClass(e.confirmed_severity || (e.brief && e.brief.confirmed_severity) || e.severity);
+    const sev = API.finalSev(e);
     const expl = e.brief && e.brief.explanation ? e.brief.explanation : "";
     const thumb = e.image ? `<img class="thumb" loading="lazy" src="${API.imgUrl(e.image)}" alt="">` : "";
     const handled = e.handled
@@ -24,8 +24,8 @@ const Alerts = (() => {
   }
 
   function matches(e) {
-    if (filter === "critical") return (e.confirmed_severity || e.severity) === "critical";
-    if (filter === "warning") return (e.confirmed_severity || e.severity) === "warning";
+    if (filter === "critical") return API.finalSev(e) === "critical";
+    if (filter === "warning") return API.finalSev(e) === "warning";
     if (filter === "unhandled") return !e.handled;
     return true;
   }
@@ -65,7 +65,14 @@ const Alerts = (() => {
     try {
       const e = await API.post(`/api/events/${id}/handle`, { note });
       upsert(e); paint(); updateBadge();
-    } catch (err) { alert("处理失败:" + err.message); }
+    } catch (err) {
+      if (err.status === 401) {           // backend requires a write token
+        const t = prompt("该后端要求写权限令牌(Authorization token):", API.getToken());
+        if (t) { API.setToken(t); return handle(id); }  // retry once with the token
+        return;
+      }
+      alert("处理失败:" + err.message);
+    }
   }
 
   function upsert(e) {
@@ -78,7 +85,7 @@ const Alerts = (() => {
   function onLive(name, payload) {
     if (name === "hazard") {
       upsert(payload);
-      const sev = payload.confirmed_severity || payload.severity;
+      const sev = API.finalSev(payload);
       if (sev === "critical" && "Notification" in window && Notification.permission === "granted") {
         new Notification("严重告警 · " + payload.station_id, { body: payload.summary });
       }
@@ -90,7 +97,7 @@ const Alerts = (() => {
   }
 
   function updateBadge() {
-    const n = events.filter((e) => !e.handled && (e.confirmed_severity || e.severity) !== "info").length;
+    const n = events.filter((e) => !e.handled && API.finalSev(e) !== "info").length;
     const b = document.getElementById("alertBadge");
     if (b) { b.textContent = n; b.classList.toggle("hidden", n === 0); }
   }

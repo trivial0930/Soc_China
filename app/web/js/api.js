@@ -7,12 +7,15 @@ const API = (() => {
     if (!r.ok) throw new Error(path + " -> " + r.status);
     return r.json();
   }
+  function getToken() { try { return localStorage.getItem("app_token") || ""; } catch (_) { return ""; } }
+  function setToken(t) { try { localStorage.setItem("app_token", t || ""); } catch (_) {} }
+
   async function post(path, body) {
-    const r = await fetch(base + path, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body || {}),
-    });
-    if (!r.ok) throw new Error(path + " -> " + r.status);
+    const headers = { "Content-Type": "application/json" };
+    const tok = getToken();
+    if (tok) headers["Authorization"] = "Bearer " + tok; // write endpoints may require a token (SPEC §4.1)
+    const r = await fetch(base + path, { method: "POST", headers, body: JSON.stringify(body || {}) });
+    if (!r.ok) { const e = new Error(path + " -> " + r.status); e.status = r.status; throw e; }
     return r.json();
   }
 
@@ -39,6 +42,9 @@ const API = (() => {
 
   // helpers
   const sevClass = (s) => (s === "critical" || s === "warning" || s === "info") ? s : "info";
+  // final severity = L2-confirmed (in brief) if present, else L1 severity.
+  // List endpoints omit brief; SSE 'hazard' may carry brief -> corrected value then.
+  const finalSev = (e) => sevClass((e.brief && e.brief.confirmed_severity) || e.severity);
   const sevText = { info: "信息", warning: "警告", critical: "严重" };
   const imgUrl = (name) => name ? base + "/img/" + encodeURIComponent(name) : "";
   function fmtIso(s) {
@@ -52,5 +58,5 @@ const API = (() => {
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-  return { getJSON, post, streamEvents, sevClass, sevText, imgUrl, fmtIso, fmtUnix, esc };
+  return { getJSON, post, streamEvents, sevClass, finalSev, sevText, imgUrl, fmtIso, fmtUnix, esc, getToken, setToken };
 })();
