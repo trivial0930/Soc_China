@@ -65,6 +65,7 @@ def normalize_acceptance(raw: Dict[str, Any]) -> Dict[str, Any]:
         "severity": raw.get("severity", ""),
         "problems": list(raw.get("problems", [])),
         "report_id": raw.get("report_id"),
+        "received_at": raw.get("received_at"),  # honor seed-provided time; else store stamps now
     }
 
 

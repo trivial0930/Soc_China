@@ -1,4 +1,9 @@
-{"station_id": "desk-03", "entered_at": 1718798400.0, "left_at": 1718800200.0, "snapshots": ["demo_desk03_arrive.jpg", "demo_desk03_leave.jpg"], "note": "课中实验,离场时检测到电烙铁未关。", "acceptance_hint": "存在安全隐患"}
-{"station_id": "desk-05", "entered_at": 1718798700.0, "left_at": 1718801100.0, "snapshots": ["demo_desk05_arrive.jpg"], "note": "桌面导线散落、仪器未归位。", "acceptance_hint": "需整理"}
-{"station_id": "desk-01", "entered_at": 1718799000.0, "left_at": 1718802000.0, "snapshots": ["demo_desk01_arrive.jpg"], "note": "整理完毕,桌面整洁。", "acceptance_hint": "合格"}
-{"station_id": "desk-02", "entered_at": 1718802300.0, "left_at": null, "snapshots": ["demo_desk02_arrive.jpg"], "note": "", "acceptance_hint": ""}
+{"station_id": "desk-01", "entered_at": 1781744400.0, "left_at": 1781745480.0, "snapshots": ["demo_desk01_arrive.jpg"], "note": "整理完毕,桌面整洁。", "acceptance_hint": "合格"}
+{"station_id": "desk-02", "entered_at": 1781744880.0, "left_at": 1781746200.0, "snapshots": ["demo_desk02_arrive.jpg"], "note": "正常实验离场。", "acceptance_hint": "合格"}
+{"station_id": "desk-03", "entered_at": 1781762400.0, "left_at": 1781764080.0, "snapshots": ["demo_desk03_arrive.jpg", "demo_desk03_leave.jpg"], "note": "课中实验,离场时检测到电烙铁未关。", "acceptance_hint": "存在安全隐患"}
+{"station_id": "desk-05", "entered_at": 1781763120.0, "left_at": 1781764800.0, "snapshots": ["demo_desk05_arrive.jpg"], "note": "桌面导线散落、仪器未归位。", "acceptance_hint": "需整理"}
+{"station_id": "desk-01", "entered_at": 1781834400.0, "left_at": 1781835720.0, "snapshots": ["demo_desk01_arrive.jpg"], "note": "实验完成,工位清空。", "acceptance_hint": "合格"}
+{"station_id": "desk-04", "entered_at": 1781834940.0, "left_at": 1781836500.0, "snapshots": [], "note": "未发现异常。", "acceptance_hint": "合格"}
+{"station_id": "desk-03", "entered_at": 1781854200.0, "left_at": 1781855700.0, "snapshots": ["demo_desk03_arrive.jpg", "demo_desk03_leave.jpg"], "note": "复测正常。", "acceptance_hint": "合格"}
+{"station_id": "desk-05", "entered_at": 1781919000.0, "left_at": 1781920680.0, "snapshots": ["demo_desk05_arrive.jpg"], "note": "导线略乱,已提醒。", "acceptance_hint": "需整理"}
+{"station_id": "desk-02", "entered_at": 1781919720.0, "left_at": null, "snapshots": ["demo_desk02_arrive.jpg"], "note": "实验进行中。", "acceptance_hint": ""}

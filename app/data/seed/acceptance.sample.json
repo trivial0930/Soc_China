@@ -1,7 +1,50 @@
 [
-  {"station_id": "desk-03", "verdict": "存在安全隐患", "severity": "critical",
-   "problems": ["电烙铁未关闭或未归位", "电源/排插未断开"], "report_id": 1},
-  {"station_id": "desk-05", "verdict": "需整理", "severity": "warning",
-   "problems": ["导线杂乱拖拽", "仪器设备未归位"], "report_id": 1},
-  {"station_id": "desk-01", "verdict": "合格", "severity": "info", "problems": [], "report_id": 1}
+  {
+    "station_id": "desk-03",
+    "verdict": "存在安全隐患",
+    "severity": "critical",
+    "problems": [
+      "电烙铁未关闭或未归位",
+      "电源/排插未断开"
+    ],
+    "report_id": 1,
+    "received_at": "2026-06-18T14:30:00+08:00"
+  },
+  {
+    "station_id": "desk-05",
+    "verdict": "需整理",
+    "severity": "warning",
+    "problems": [
+      "导线杂乱拖拽",
+      "仪器设备未归位"
+    ],
+    "report_id": 1,
+    "received_at": "2026-06-18T14:42:00+08:00"
+  },
+  {
+    "station_id": "desk-01",
+    "verdict": "合格",
+    "severity": "info",
+    "problems": [],
+    "report_id": 1,
+    "received_at": "2026-06-19T10:24:00+08:00"
+  },
+  {
+    "station_id": "desk-05",
+    "verdict": "合格",
+    "severity": "info",
+    "problems": [],
+    "report_id": 1,
+    "received_at": "2026-06-20T10:00:00+08:00"
+  },
+  {
+    "station_id": "desk-02",
+    "verdict": "需整理",
+    "severity": "warning",
+    "problems": [
+      "仪器未归位"
+    ],
+    "report_id": 1,
+    "received_at": "2026-06-20T09:58:00+08:00"
+  }
 ]
