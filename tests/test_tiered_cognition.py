@@ -187,6 +187,15 @@ class TierSettingsTests(unittest.TestCase):
         self.assertEqual(s["fast_base_url"], "http://localhost:8080/v1")
         self.assertEqual(s["deep_base_url"], "http://192.168.128.100:11434/v1")
         self.assertEqual(s["policy"].escalate_below_confidence, 0.5)
+        # send_image defaults: L1.5 (fast) text-only, L2 (deep) sees the image.
+        self.assertFalse(s["fast_send_image"])
+        self.assertTrue(s["deep_send_image"])
+
+    def test_send_image_flags_are_configurable(self):
+        cfg = {"tier": {"fast": {"send_image": True}, "deep": {"send_image": False}}}
+        s = tier_settings_from_dict(cfg)
+        self.assertTrue(s["fast_send_image"])
+        self.assertFalse(s["deep_send_image"])
 
     def test_missing_deep_means_empty_base_url(self):
         s = tier_settings_from_dict({"tier": {"fast": {"vlm_model": "m"}}})

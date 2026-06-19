@@ -77,13 +77,29 @@ class CognitionBackend(Protocol):
         ...
 
 
-def build_prompt(request: CognitionRequest) -> str:
-    """Assemble the local-VLM prompt from the structured event + context (pure)."""
+def build_prompt(request: CognitionRequest, with_image: bool = True) -> str:
+    """Assemble the local-VLM prompt from the structured event + context (pure).
+
+    with_image=False -> text-only L1.5: judge from the structured facts L1 already
+    extracted (object class + temperature + context), with no image. Image-based
+    visual verification is delegated to the deep tier (L2) via escalation.
+    """
     e = request.event
     advice = _ADVICE.get(e.event_type, "建议复核现场情况")
-    lines = [
-        "你是电子实验室巡检系统的本地分析助手。根据下面的结构化告警和现场图像，",
-        "用一句中文简要说明现场情况，并给出处置建议。",
+    if with_image:
+        head = [
+            "你是电子实验室巡检系统的本地分析助手。根据下面的结构化告警和现场图像，",
+            "用一句中文简要说明现场情况，并给出处置建议。",
+        ]
+    else:
+        head = [
+            "你是电子实验室巡检系统的本地分析助手。下面是端侧初筛给出的结构化告警"
+            "（已含检测到的物体类别、温度、热点状态与现场上下文，但没有图像）。",
+            "请据此用一句中文说明情况并给出处置建议；结合上下文(课中/课后、是否有人)"
+            "判断真实严重度(可纠正初筛的明显误报，如常温物体)。",
+            "若仅凭结构化信息不足以判断、疑似视觉误报或需看图核实，请把 escalate_to_cloud 设为 true。",
+        ]
+    lines = head + [
         "",
         f"工位: {e.station_id or '未知'}",
         f"事件类型: {e.event_type}",
@@ -170,13 +186,24 @@ class LocalVLMBackend:
     logic here is unit-tested with a fake client.
     """
 
-    def __init__(self, client: VLMClient, policy: Optional[EscalationPolicy] = None) -> None:
+    def __init__(
+        self,
+        client: VLMClient,
+        policy: Optional[EscalationPolicy] = None,
+        send_image: bool = True,
+    ) -> None:
         self.client = client
         self.policy = policy or EscalationPolicy()
+        # send_image=False -> text-only tier (e.g. L1.5 on the RDK CPU, where vision
+        # prefill is too slow ~70s; judge from L1's structured facts in ~25s instead).
+        self.send_image = send_image
 
     def assess(self, request: CognitionRequest) -> CognitionResult:
-        prompt = build_prompt(request)
-        images = [p for p in (request.image_path, request.thermal_path) if p]
+        prompt = build_prompt(request, with_image=self.send_image)
+        if self.send_image:
+            images = [p for p in (request.image_path, request.thermal_path) if p]
+        else:
+            images = []
         raw = self.client.complete(prompt, images)
         result = parse_vlm_result(raw)
         # Policy has the final say if the model didn't already ask for the cloud.
@@ -192,7 +219,9 @@ def make_backend(name: str, policy: Optional[EscalationPolicy] = None, **kwargs)
     if name == "mock":
         return MockCognitionBackend(policy=policy)
     if name == "local_vlm":  # pragma: no cover - needs a real client on-board
-        return LocalVLMBackend(client=kwargs["client"], policy=policy)
+        return LocalVLMBackend(
+            client=kwargs["client"], policy=policy, send_image=kwargs.get("send_image", True)
+        )
     raise ValueError(f"unknown cognition backend: {name}")
 
 

@@ -105,12 +105,14 @@ class CognitionNode(Node):
             fast = LocalVLMBackend(
                 client=ollama_vlm_client(model=ts["fast_model"], base_url=ts["fast_base_url"]),
                 policy=self.policy,
+                send_image=ts["fast_send_image"],  # L1.5 text-only by default (A55 vision too slow)
             )
             deep = None
             if ts["deep_base_url"]:
                 deep = LocalVLMBackend(
                     client=ollama_vlm_client(model=ts["deep_model"], base_url=ts["deep_base_url"]),
                     policy=self.policy,
+                    send_image=ts["deep_send_image"],  # L2 sees the image
                 )
             return TieredCognitionBackend(
                 fast=fast, deep=deep, fallback=MockCognitionBackend(self.policy), policy=ts["policy"]

@@ -82,6 +82,17 @@ class PromptTests(unittest.TestCase):
         self.assertIn("soldering_iron", prompt)
         self.assertIn("JSON", prompt)
 
+    def test_with_image_prompt_references_the_image(self):
+        self.assertIn("现场图像", build_prompt(request(), with_image=True))
+
+    def test_text_only_prompt_drops_image_reference_keeps_facts(self):
+        prompt = build_prompt(request(), with_image=False)
+        self.assertNotIn("现场图像", prompt)        # no image -> don't mention one
+        self.assertIn("没有图像", prompt)            # explicit text-only framing
+        self.assertIn("escalate_to_cloud", prompt)  # tells model to escalate if it needs the image
+        self.assertIn("soldering_iron", prompt)     # still has the structured facts
+        self.assertIn("JSON", prompt)
+
 
 class VLMBackendTests(unittest.TestCase):
     def test_parses_clean_json_reply(self):
@@ -105,6 +116,20 @@ class VLMBackendTests(unittest.TestCase):
         result = backend.assess(req)
         self.assertIn("desk-03", client.last_prompt)
         self.assertEqual(client.last_images, ["/ev/a.jpg", "/ev/a_thermal.jpg"])
+        self.assertEqual(result.confirmed_severity, "warning")
+
+    def test_text_only_backend_sends_no_images(self):
+        # L1.5 (send_image=False): even with evidence paths set, no image goes to the
+        # model (A55 vision is too slow); it judges from the structured-fact prompt.
+        client = FakeVLMClient('{"explanation":"x","severity":"warning","actions":["log"],"confidence":0.7}')
+        backend = LocalVLMBackend(client=client, policy=EscalationPolicy(), send_image=False)
+        req = request()
+        req.image_path = "/ev/a.jpg"
+        req.thermal_path = "/ev/a_thermal.jpg"
+        result = backend.assess(req)
+        self.assertEqual(client.last_images, [])           # no images sent
+        self.assertNotIn("现场图像", client.last_prompt)    # text-only prompt
+        self.assertIn("desk-03", client.last_prompt)        # facts still present
         self.assertEqual(result.confirmed_severity, "warning")
 
     def test_policy_overrides_escalation_when_model_uncertain(self):

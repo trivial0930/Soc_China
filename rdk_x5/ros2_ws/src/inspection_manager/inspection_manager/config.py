@@ -39,10 +39,15 @@ def tier_settings_from_dict(cfg: dict) -> dict:
     fast = t.get("fast") or {}
     deep = t.get("deep") or {}
     return {
-        "fast_model": str(fast.get("vlm_model", "qwen2-vl:2b")),
+        "fast_model": str(fast.get("vlm_model", "qwen2.5vl:3b")),
         "fast_base_url": str(fast.get("vlm_base_url", "http://localhost:8080/v1")),
+        # fast (L1.5) defaults to TEXT-ONLY: on the RDK A55 CPU an image query is
+        # ~70s vs ~25s text-only, so L1.5 judges from L1's structured facts and lets
+        # the deep tier (L2) do image verification on escalation.
+        "fast_send_image": bool(fast.get("send_image", False)),
         "deep_model": str(deep.get("vlm_model", "qwen2.5vl:7b")),
         "deep_base_url": str(deep.get("vlm_base_url", "")),
+        "deep_send_image": bool(deep.get("send_image", True)),
         "policy": tier_policy_from_dict(t.get("policy") or {}),
     }
 
