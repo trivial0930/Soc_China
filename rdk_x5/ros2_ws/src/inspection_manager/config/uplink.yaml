@@ -8,5 +8,6 @@ uplink_node:
     brief_topic: "/inspection/brief"
     record_topic: "/inspection/workstation_record"
     report_topic: "/inspection/report"
+    acceptance_topic: "/inspection/acceptance"   # on-demand 验收 (acceptance_node) -> backend
     flush_sec: 5.0                # retry-queue flush period
     max_attempts: 5              # drop a payload after this many failed POSTs

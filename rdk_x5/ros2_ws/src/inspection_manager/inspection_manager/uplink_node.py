@@ -34,6 +34,7 @@ class UplinkNode(Node):
         p("brief_topic", "/inspection/brief")
         p("record_topic", "/inspection/workstation_record")
         p("report_topic", "/inspection/report")
+        p("acceptance_topic", "/inspection/acceptance")
         p("flush_sec", 5.0)
         p("max_attempts", 5)
 
@@ -46,6 +47,7 @@ class UplinkNode(Node):
         self.create_subscription(String, str(gp("brief_topic").value), self._on_brief, 10)
         self.create_subscription(String, str(gp("record_topic").value), self._on_record, 10)
         self.create_subscription(String, str(gp("report_topic").value), self._on_report, 10)
+        self.create_subscription(String, str(gp("acceptance_topic").value), self._on_acceptance, 10)
         self.create_timer(float(gp("flush_sec").value), self._flush)
         self.get_logger().info(f"uplink_node -> {gp('backend_url').value}")
 
@@ -104,6 +106,11 @@ class UplinkNode(Node):
         # also surface per-station acceptance if the report carries it (optional)
         for acc in raw.get("acceptance", []) or []:
             self._enqueue("acceptance", build_acceptance(acc))
+
+    def _on_acceptance(self, msg: String) -> None:
+        raw = self._parse(msg)
+        if raw:
+            self._enqueue("acceptance", build_acceptance(raw))
 
     def _flush(self) -> None:  # pragma: no cover - network
         if len(self.queue):

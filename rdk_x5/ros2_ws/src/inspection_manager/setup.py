@@ -30,6 +30,7 @@ setup(
             "workstation_record_node = inspection_manager.workstation_record_node:main",
             "uplink_node = inspection_manager.uplink_node:main",
             "command_receiver_node = inspection_manager.command_receiver_node:main",
+            "acceptance_node = inspection_manager.acceptance_node:main",
         ],
     },
 )

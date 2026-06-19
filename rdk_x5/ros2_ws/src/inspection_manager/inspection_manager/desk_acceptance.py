@@ -19,6 +19,13 @@ from .events import HazardEvent, severity_rank
 from .report import acceptance_verdict
 
 
+def expand_targets(target: str, stations_cfg: Dict) -> List[str]:
+    """Acceptance target -> station list. 'all'/'' => every station in stations.yaml waypoints."""
+    if target and target != "all":
+        return [target]
+    return sorted(set((stations_cfg.get("waypoints") or {}).values()))
+
+
 @dataclass(frozen=True)
 class Check:
     key: str  # observation key

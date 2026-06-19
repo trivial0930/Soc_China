@@ -5,8 +5,12 @@ command_receiver_node:
     ingest_token: ""              # match backend APP_INGEST_TOKEN (inject via -p at launch)
     poll_sec: 2.0                 # how often to pull pending commands
     pending_limit: 10
-    # stations.yaml path (waypoints map) so recheck_station can resolve station->waypoint.
+    # stations.yaml path (waypoints map): recheck_station / inspection_round / find_item(navigate).
     stations_config: ""
+    # gimbal_aim.yaml path (station/location -> [pan,tilt]): laser_point / find_item(laser).
+    gimbal_aim_config: ""
     voice_topic: "/inspection/voice"
     recheck_topic: "/inspection/recheck"
     request_report_topic: "/inspection/request_report"
+    gimbal_topic: "/gimbal/target_angle"
+    acceptance_request_topic: "/inspection/acceptance_request"

@@ -1,21 +1,23 @@
 """Pure command->ROS dispatch logic for the App->robot command channel.
 
 stdlib only, unit-tested (no rclpy). The node (command_receiver_node.py) is a thin
-shell: it polls the backend, calls dispatch_command() to decide which ROS topic to
-publish and what String to send, publishes, then posts a result back.
+shell: it polls the backend, calls dispatch_command() to decide which ROS topic(s)
+to publish and what payload, publishes, then posts a result receipt.
 
-Supported now (map 1:1 to existing ROS topics): voice_prompt, recheck_station,
-generate_report. Other types return {"unsupported": reason} so the node reports an
-honest 'failed' receipt instead of silently dropping the command — they can be wired
-incrementally as the robot exposes triggers for patrol/acceptance/laser.
+dispatch_command() handles the deterministic types. ``find_item`` needs an async
+backend asset lookup, so the node resolves the asset first, then re-dispatches it as
+a recheck_station (navigate) or laser_point (laser) — keeping this module pure.
+
+An action is {"topic_key", "kind": "string"|"vector3", "data": str | [pan,tilt,0.0]}.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-SUPPORTED = {"voice_prompt", "recheck_station", "generate_report"}
+# types resolved by the node (need a backend lookup) rather than here
+NODE_RESOLVED = {"find_item"}
 
 
 def station_to_waypoint(station_id: str, stations_cfg: Dict[str, Any]) -> Optional[str]:
@@ -26,14 +28,31 @@ def station_to_waypoint(station_id: str, stations_cfg: Dict[str, Any]) -> Option
     return None
 
 
-def dispatch_command(cmd: Dict[str, Any], stations_cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Map a Command to a ROS publish descriptor.
+def all_waypoints(stations_cfg: Dict[str, Any]) -> List[str]:
+    return list((stations_cfg.get("waypoints") or {}).keys())
 
-    Returns either:
-      {"topic_key": <param name>, "data": <String payload>, "result": <receipt text>}
-      or {"unsupported": <reason>}.
+
+def aim_angle(target: str, gimbal_cfg: Dict[str, Any]) -> Optional[List[float]]:
+    """Look up a station_id or location string -> [pan_deg, tilt_deg] from gimbal aim config."""
+    angle = (gimbal_cfg.get("aim") or {}).get(target)
+    if isinstance(angle, (list, tuple)) and len(angle) >= 2:
+        return [float(angle[0]), float(angle[1])]
+    return None
+
+
+def _recheck_action(station_id: str, waypoint: str) -> Dict[str, Any]:
+    return {"topic_key": "recheck_topic", "kind": "string",
+            "data": json.dumps({"station_id": station_id, "waypoint": waypoint}, ensure_ascii=False)}
+
+
+def dispatch_command(cmd: Dict[str, Any], stations_cfg: Optional[Dict[str, Any]] = None,
+                     gimbal_cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Map a Command to ROS action(s).
+
+    Returns {"actions": [action...], "result": <receipt text>} or {"unsupported": <reason>}.
     """
     stations_cfg = stations_cfg or {}
+    gimbal_cfg = gimbal_cfg or {}
     ctype = cmd.get("type", "")
     params = cmd.get("params") or {}
 
@@ -41,18 +60,51 @@ def dispatch_command(cmd: Dict[str, Any], stations_cfg: Optional[Dict[str, Any]]
         text = str(params.get("text", "")).strip()
         if not text:
             return {"unsupported": "voice_prompt 缺 text"}
-        return {"topic_key": "voice_topic", "data": text, "result": f"已播报:{text}"}
+        return {"actions": [{"topic_key": "voice_topic", "kind": "string", "data": text}],
+                "result": f"已播报:{text}"}
 
     if ctype == "recheck_station":
         sid = str(params.get("station_id", ""))
         wp = station_to_waypoint(sid, stations_cfg)
         if wp is None:
             return {"unsupported": f"工位 {sid} 未在 stations.yaml 配置 waypoint,无法导航"}
-        data = json.dumps({"station_id": sid, "waypoint": wp}, ensure_ascii=False)
-        return {"topic_key": "recheck_topic", "data": data, "result": f"已发起到 {sid} 的复核导航"}
+        return {"actions": [_recheck_action(sid, wp)], "result": f"已发起到 {sid} 的复核导航"}
 
     if ctype == "generate_report":
         rtype = str(params.get("report_type", "periodic_summary"))
-        return {"topic_key": "request_report_topic", "data": rtype, "result": f"已触发报告生成:{rtype}"}
+        return {"actions": [{"topic_key": "request_report_topic", "kind": "string", "data": rtype}],
+                "result": f"已触发报告生成:{rtype}"}
+
+    if ctype == "inspection_round":
+        wps = all_waypoints(stations_cfg)
+        if not wps:
+            return {"unsupported": "stations.yaml 未配置 waypoints,无法巡检"}
+        actions = [_recheck_action(stations_cfg["waypoints"][wp], wp) for wp in wps]
+        return {"actions": actions, "result": f"已发起巡检:依次复核 {len(wps)} 个工位"}
+
+    if ctype == "laser_point":
+        target = str(params.get("station_id") or params.get("location") or "")
+        angle = aim_angle(target, gimbal_cfg)
+        if angle is None:
+            return {"unsupported": f"目标 {target!r} 未在云台角度表(gimbal aim)配置,无法指示"}
+        return {"actions": [{"topic_key": "gimbal_topic", "kind": "vector3", "data": [angle[0], angle[1], 0.0]}],
+                "result": f"激光已指向 {target}(pan={angle[0]},tilt={angle[1]})"}
+
+    if ctype == "acceptance":
+        target = str(params.get("station_id", "") or "all")
+        return {"actions": [{"topic_key": "acceptance_request_topic", "kind": "string", "data": target}],
+                "result": f"已发起课后验收:{target}"}
 
     return {"unsupported": f"机器人侧暂未接入命令类型:{ctype}"}
+
+
+def find_item_to_command(asset: Dict[str, Any], mode: str) -> Dict[str, Any]:
+    """Turn a resolved asset (from GET /api/assets) + mode into a re-dispatchable command.
+
+    navigate -> drive to the asset's station (recheck_station, large assets);
+    laser    -> point at the asset's location (laser_point; station or location_text).
+    """
+    if mode == "laser":
+        target = asset.get("location_text") or asset.get("station_id") or asset.get("area") or ""
+        return {"type": "laser_point", "params": {"location": target}}
+    return {"type": "recheck_station", "params": {"station_id": asset.get("station_id", "")}}

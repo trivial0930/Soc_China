@@ -1,0 +1,8 @@
+# Static laser-aim angle table for laser_point / find_item(laser).
+# Maps a station_id OR a location string (asset location_text) -> [pan_deg, tilt_deg].
+# Fill with measured gimbal angles during on-board bring-up (robot at its home pose).
+# Targets not listed here return an "unsupported" receipt (honest, not a silent drop).
+aim:
+  desk-03: [12.6, -11.6]
+  # desk-01: [0.0, -8.0]
+  # "元件柜2/抽屉3/盒B": [30.0, -5.0]

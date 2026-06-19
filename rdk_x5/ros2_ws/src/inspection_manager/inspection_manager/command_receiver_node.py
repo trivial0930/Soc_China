@@ -2,17 +2,24 @@
 
 Mirrors the uplink node's stdlib-HTTP approach (no extra pip dep). On a timer it
 polls GET /api/robot/commands/pending, and for each command: ack -> dispatch to the
-right ROS topic (see command_receiver.dispatch_command) -> POST a result receipt.
-Backend address/token default to the same params as the uplink node.
+right ROS topic(s) (see command_receiver.dispatch_command) -> POST a result receipt.
+
+Supported: voice_prompt, recheck_station, generate_report, inspection_round (patrol
+over all waypoints), laser_point (gimbal angle from gimbal_aim config), acceptance
+(-> acceptance_node), find_item (resolves the asset via GET /api/assets then routes
+to recheck/laser). Backend address/token default to the uplink node's params.
 """
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 import rclpy
+from geometry_msgs.msg import Vector3
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from inspection_manager.command_receiver import dispatch_command
+from inspection_manager.command_receiver import dispatch_command, find_item_to_command
 from inspection_manager.uplink import HttpPoster
 
 
@@ -25,19 +32,26 @@ class CommandReceiverNode(Node):
         gp("poll_sec", 2.0)
         gp("pending_limit", 10)
         gp("stations_config", "")
+        gp("gimbal_aim_config", "")
         gp("voice_topic", "/inspection/voice")
         gp("recheck_topic", "/inspection/recheck")
         gp("request_report_topic", "/inspection/request_report")
+        gp("gimbal_topic", "/gimbal/target_angle")
+        gp("acceptance_request_topic", "/inspection/acceptance_request")
 
         g = self.get_parameter
         self.poster = HttpPoster(str(g("backend_url").value), str(g("ingest_token").value))
         self.pending_limit = int(g("pending_limit").value)
         self.stations_cfg = self._read_yaml(str(g("stations_config").value))
-        # one publisher per supported topic key
-        self.pubs = {
+        self.gimbal_cfg = self._read_yaml(str(g("gimbal_aim_config").value))
+        self.string_pubs = {
             "voice_topic": self.create_publisher(String, str(g("voice_topic").value), 10),
             "recheck_topic": self.create_publisher(String, str(g("recheck_topic").value), 10),
             "request_report_topic": self.create_publisher(String, str(g("request_report_topic").value), 10),
+            "acceptance_request_topic": self.create_publisher(String, str(g("acceptance_request_topic").value), 10),
+        }
+        self.vector_pubs = {
+            "gimbal_topic": self.create_publisher(Vector3, str(g("gimbal_topic").value), 10),
         }
         self.create_timer(float(g("poll_sec").value), self._poll)
         self.get_logger().info(f"command_receiver_node up -> {self.poster.base}")
@@ -63,6 +77,27 @@ class CommandReceiverNode(Node):
         for cmd in (resp or {}).get("items", []):
             self._handle(cmd)
 
+    def _resolve_command(self, cmd: dict) -> dict:
+        """find_item -> look the asset up on the backend, return a recheck/laser command."""
+        if cmd.get("type") != "find_item":
+            return cmd
+        p = cmd.get("params") or {}
+        mode = p.get("mode", "navigate")
+        try:
+            if p.get("name"):
+                items = (self.poster.get_json(f"/api/assets?name={quote(str(p['name']))}") or {}).get("items", [])
+            elif p.get("asset_id"):  # backend filters by name, not id -> fetch + match
+                allitems = (self.poster.get_json("/api/assets?limit=500") or {}).get("items", [])
+                items = [a for a in allitems if a.get("id") == int(p["asset_id"])]
+            else:
+                items = []
+        except Exception as exc:  # noqa: BLE001
+            self.get_logger().warn(f"asset lookup failed: {exc}")
+            return {"type": "find_item", "params": {"_error": str(exc)}}
+        if not items:
+            return {"type": "find_item", "params": {"_error": "asset not found"}}
+        return find_item_to_command(items[0], mode)
+
     def _handle(self, cmd: dict) -> None:
         cid = cmd.get("command_id", "")
         try:
@@ -71,18 +106,31 @@ class CommandReceiverNode(Node):
             self.get_logger().warn(f"ack {cid} failed: {exc}")
             return
 
-        plan = dispatch_command(cmd, self.stations_cfg)
+        resolved = self._resolve_command(cmd)
+        if resolved.get("params", {}).get("_error"):
+            self._report(cid, "failed", f"寻找物品失败:{resolved['params']['_error']}")
+            return
+
+        plan = dispatch_command(resolved, self.stations_cfg, self.gimbal_cfg)
         if "unsupported" in plan:
             self.get_logger().info(f"{cid} unsupported: {plan['unsupported']}")
             self._report(cid, "failed", plan["unsupported"])
             return
         try:
-            self.pubs[plan["topic_key"]].publish(String(data=plan["data"]))
-            self.get_logger().info(f"{cid} -> {plan['topic_key']}: {plan['result']}")
+            for act in plan["actions"]:
+                self._publish(act)
+            self.get_logger().info(f"{cid} -> {len(plan['actions'])} action(s): {plan['result']}")
             self._report(cid, "done", plan["result"])
         except Exception as exc:  # noqa: BLE001
             self.get_logger().warn(f"dispatch {cid} failed: {exc}")
             self._report(cid, "failed", f"机器人执行异常:{exc}")
+
+    def _publish(self, act: dict) -> None:
+        if act["kind"] == "vector3":
+            x, y, z = act["data"]
+            self.vector_pubs[act["topic_key"]].publish(Vector3(x=float(x), y=float(y), z=float(z)))
+        else:
+            self.string_pubs[act["topic_key"]].publish(String(data=act["data"]))
 
     def _report(self, cid: str, status: str, result: str) -> None:
         try:
