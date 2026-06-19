@@ -29,6 +29,7 @@ setup(
             "sim_hazard_publisher = inspection_manager.sim_hazard_publisher:main",
             "workstation_record_node = inspection_manager.workstation_record_node:main",
             "uplink_node = inspection_manager.uplink_node:main",
+            "command_receiver_node = inspection_manager.command_receiver_node:main",
         ],
     },
 )

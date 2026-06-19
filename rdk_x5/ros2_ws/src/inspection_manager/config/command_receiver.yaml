@@ -1,0 +1,12 @@
+command_receiver_node:
+  ros__parameters:
+    # Management-app backend (same as uplink). Point at the Mac/edge IP:port.
+    backend_url: "http://192.168.128.100:8000"
+    ingest_token: ""              # match backend APP_INGEST_TOKEN (inject via -p at launch)
+    poll_sec: 2.0                 # how often to pull pending commands
+    pending_limit: 10
+    # stations.yaml path (waypoints map) so recheck_station can resolve station->waypoint.
+    stations_config: ""
+    voice_topic: "/inspection/voice"
+    recheck_topic: "/inspection/recheck"
+    request_report_topic: "/inspection/request_report"

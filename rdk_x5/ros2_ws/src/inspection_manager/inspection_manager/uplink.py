@@ -136,6 +136,12 @@ class HttpPoster:  # pragma: no cover - real network
         with urllib.request.urlopen(req, timeout=self.timeout) as r:
             return 200 <= r.status < 300
 
+    def get_json(self, path: str) -> Any:
+        """GET + parse JSON body (used to poll the command queue)."""
+        req = urllib.request.Request(self.base + path, headers=self._headers("application/json"), method="GET")
+        with urllib.request.urlopen(req, timeout=self.timeout) as r:
+            return json.loads(r.read().decode("utf-8"))
+
     def post_image(self, path: str, filename: str, data: bytes) -> bool:
         boundary = "----rdkuplink7e1f"
         body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
