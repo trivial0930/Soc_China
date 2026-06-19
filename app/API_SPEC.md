@@ -150,6 +150,8 @@ RDK 机器人(已有数据)        Mac/边缘机后端(本文档)            你
 | GET | `/api/events/{event_id}` | 单条 Event(**带 brief**) |
 | POST | `/api/events/{event_id}/handle` | 标记已处理。body `{"note":"已断电并提醒"}`。需 token。返回更新后的 Event |
 
+> **数据保留**:后端会自动删除「已处理且处理时间超过 30 天」的告警(连同其 brief)。未处理的告警永不自动删除。App 端无需特殊处理,只是历史已处理告警一个月后不再返回。保留天数由后端 `APP_RETENTION_DAYS` 配置(0=不删)。
+
 **示例**
 ```bash
 curl "http://192.168.1.10:8000/api/events?severity=critical&handled=false&limit=20"

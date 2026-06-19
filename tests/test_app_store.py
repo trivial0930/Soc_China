@@ -79,6 +79,49 @@ class StoreEventTests(unittest.TestCase):
         self.assertIsNone(self.s.handle_event("nope", "x"))
 
 
+class StoreRetentionTests(unittest.TestCase):
+    def setUp(self):
+        self.s = store.Store(":memory:")
+
+    def _handle_at(self, eid, iso):
+        """Mark handled then force handled_at to a fixed ISO timestamp."""
+        self.s.handle_event(eid, "done")
+        self.s.conn.execute("UPDATE events SET handled_at=? WHERE event_id=?", (iso, eid))
+        self.s.conn.commit()
+
+    def test_purges_only_old_handled_events(self):
+        self.s.upsert_event(ingest.normalize_event(_event(eid="old")))
+        self.s.upsert_event(ingest.normalize_event(_event(eid="recent")))
+        self.s.upsert_event(ingest.normalize_event(_event(eid="unhandled")))
+        self._handle_at("old", store.iso_days_ago(40))      # past the 30d cutoff
+        self._handle_at("recent", store.iso_days_ago(5))    # within retention
+        cutoff = store.iso_days_ago(30)
+
+        n = self.s.purge_handled_before(cutoff)
+        self.assertEqual(n, 1)
+        ids = {e["event_id"] for e in self.s.list_events()["items"]}
+        self.assertEqual(ids, {"recent", "unhandled"})       # old gone; others kept
+
+    def test_purge_also_removes_brief(self):
+        self.s.upsert_event(ingest.normalize_event(_event(eid="old")))
+        self.s.upsert_brief(ingest.normalize_brief({"event": {"event_id": "old"},
+                                                    "explanation": "x", "confirmed_severity": "critical"}))
+        self._handle_at("old", store.iso_days_ago(40))
+        self.assertEqual(self.s.purge_handled_before(store.iso_days_ago(30)), 1)
+        self.assertIsNone(self.s.get_brief("old"))
+
+    def test_purge_skips_handled_without_timestamp(self):
+        self.s.upsert_event(ingest.normalize_event(_event(eid="e1")))
+        self.s.conn.execute("UPDATE events SET handled=1, handled_at=NULL WHERE event_id='e1'")
+        self.s.conn.commit()
+        self.assertEqual(self.s.purge_handled_before(store.iso_days_ago(30)), 0)
+        self.assertEqual(self.s.list_events()["total"], 1)
+
+    def test_purge_empty_is_noop(self):
+        self.s.upsert_event(ingest.normalize_event(_event(eid="e1")))  # unhandled
+        self.assertEqual(self.s.purge_handled_before(store.iso_days_ago(30)), 0)
+
+
 class StoreRecordReportTests(unittest.TestCase):
     def setUp(self):
         self.s = store.Store(":memory:")

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 _SCHEMA = os.path.join(os.path.dirname(__file__), "schema.sql")
@@ -19,6 +19,11 @@ _SCHEMA = os.path.join(os.path.dirname(__file__), "schema.sql")
 def now_iso() -> str:
     """Backend ingest time, ISO8601 with local tz."""
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def iso_days_ago(days: int) -> str:
+    """ISO8601 (local tz) timestamp `days` days before now — the retention cutoff."""
+    return (datetime.now(timezone.utc).astimezone() - timedelta(days=days)).isoformat(timespec="seconds")
 
 
 def _loads(s: Optional[str], default):
@@ -154,6 +159,28 @@ class Store:
         if cur.rowcount == 0:
             return None
         return self.get_event(event_id)
+
+    def purge_handled_before(self, cutoff_iso: str) -> int:
+        """Delete handled events whose handled_at is strictly before cutoff_iso (ISO8601),
+        together with their briefs (briefs have no FK cascade). Returns events deleted.
+
+        Comparison uses julianday() so mixed tz offsets compare correctly; events with a
+        NULL/empty handled_at are never purged (defensive — a handled event should have one).
+        """
+        rows = self.conn.execute(
+            "SELECT event_id FROM events "
+            "WHERE handled=1 AND handled_at IS NOT NULL AND handled_at != '' "
+            "AND julianday(handled_at) < julianday(?)",
+            (cutoff_iso,),
+        ).fetchall()
+        ids = [r["event_id"] for r in rows]
+        if not ids:
+            return 0
+        marks = ",".join("?" * len(ids))
+        self.conn.execute(f"DELETE FROM briefs WHERE event_id IN ({marks})", ids)
+        self.conn.execute(f"DELETE FROM events WHERE event_id IN ({marks})", ids)
+        self.conn.commit()
+        return len(ids)
 
     # -------------------------------------------------------------------- read
     def _event_row(self, row: sqlite3.Row, with_brief: bool) -> Dict[str, Any]:

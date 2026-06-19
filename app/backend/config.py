@@ -23,6 +23,11 @@ PORT = int(os.environ.get("APP_PORT", "8000"))
 # Bearer token required on write/ingest endpoints. Empty -> writes open (dev only).
 INGEST_TOKEN = os.environ.get("APP_INGEST_TOKEN", "")
 
+# Auto-delete handled events (+ their briefs) older than this many days. 0 disables.
+# A background sweep runs every RETENTION_SWEEP_SEC (and once at startup).
+RETENTION_DAYS = int(os.environ.get("APP_RETENTION_DAYS", "30"))
+RETENTION_SWEEP_SEC = int(os.environ.get("APP_RETENTION_SWEEP_SEC", "3600"))
+
 VERSION = "v1"
 
 

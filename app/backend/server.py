@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, UploadFile
@@ -24,7 +25,31 @@ config.ensure_dirs()
 STORE = store_mod.Store(config.DB_PATH)
 BROKER = push_mod.Broker()
 
-app = FastAPI(title="Lab Inspection Management API", version=config.VERSION)
+
+async def _retention_sweep() -> None:
+    """Periodically delete handled events older than config.RETENTION_DAYS."""
+    while True:
+        try:
+            cutoff = store_mod.iso_days_ago(config.RETENTION_DAYS)
+            n = STORE.purge_handled_before(cutoff)
+            if n:
+                print(f"[retention] purged {n} handled events older than {config.RETENTION_DAYS}d", flush=True)
+        except Exception as exc:  # never let the sweep kill the loop
+            print(f"[retention] sweep error: {exc}", flush=True)
+        await asyncio.sleep(config.RETENTION_SWEEP_SEC)
+
+
+@asynccontextmanager
+async def lifespan(_app: "FastAPI"):
+    task = asyncio.create_task(_retention_sweep()) if config.RETENTION_DAYS > 0 else None
+    try:
+        yield
+    finally:
+        if task:
+            task.cancel()
+
+
+app = FastAPI(title="Lab Inspection Management API", version=config.VERSION, lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
