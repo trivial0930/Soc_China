@@ -71,6 +71,20 @@ CREATE TABLE IF NOT EXISTS reports (
 );
 CREATE INDEX IF NOT EXISTS idx_reports_type ON reports(report_type);
 
+-- App -> robot command queue (downlink). Robot polls pending, acks, posts result.
+CREATE TABLE IF NOT EXISTS commands (
+    command_id   TEXT PRIMARY KEY,        -- cmd-YYYYMMDD-HHMMSS-NNNN
+    type         TEXT NOT NULL,           -- see app/API_SPEC.md command types
+    params       TEXT,                    -- JSON object
+    status       TEXT NOT NULL,           -- queued|sent|done|failed|canceled
+    issued_by    TEXT DEFAULT 'app',
+    result       TEXT DEFAULT '',         -- robot receipt (JSON/text), '' until reported
+    created_at   TEXT,                    -- ISO8601 with tz
+    updated_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_commands_status ON commands(status);
+CREATE INDEX IF NOT EXISTS idx_commands_type   ON commands(type);
+
 CREATE TABLE IF NOT EXISTS assets (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT,

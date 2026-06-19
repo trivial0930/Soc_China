@@ -193,6 +193,76 @@ class Store:
         self.conn.commit()
         return cur.rowcount
 
+    # --------------------------------------------------------------- commands
+    def _gen_command_id(self) -> str:
+        base = datetime.now(timezone.utc).astimezone().strftime("cmd-%Y%m%d-%H%M%S")
+        n = self.conn.execute(
+            "SELECT COUNT(*) c FROM commands WHERE command_id LIKE ?", (base + "-%",)
+        ).fetchone()["c"]
+        return f"{base}-{n + 1:04d}"
+
+    def _command_row(self, row: sqlite3.Row) -> Dict[str, Any]:
+        return {"command_id": row["command_id"], "type": row["type"],
+                "params": _loads(row["params"], {}), "status": row["status"],
+                "issued_by": row["issued_by"], "result": row["result"] or "",
+                "created_at": row["created_at"], "updated_at": row["updated_at"]}
+
+    def insert_command(self, ctype: str, params: Dict[str, Any], issued_by: str = "app") -> Dict[str, Any]:
+        cid, ts = self._gen_command_id(), now_iso()
+        self.conn.execute(
+            """INSERT INTO commands (command_id,type,params,status,issued_by,result,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (cid, ctype, json.dumps(params or {}, ensure_ascii=False), "queued", issued_by or "app", "", ts, ts),
+        )
+        self.conn.commit()
+        return self.get_command(cid)
+
+    def get_command(self, command_id: str) -> Optional[Dict[str, Any]]:
+        row = self.conn.execute("SELECT * FROM commands WHERE command_id=?", (command_id,)).fetchone()
+        return self._command_row(row) if row else None
+
+    def list_commands(self, *, status=None, type=None, since=None, limit=50, offset=0) -> Dict[str, Any]:
+        where, args = [], []
+        if status: where.append("status=?"); args.append(status)
+        if type: where.append("type=?"); args.append(type)
+        if since: where.append("created_at>=?"); args.append(since)
+        clause = (" WHERE " + " AND ".join(where)) if where else ""
+        total = self.conn.execute(f"SELECT COUNT(*) c FROM commands{clause}", args).fetchone()["c"]
+        rows = self.conn.execute(
+            f"SELECT * FROM commands{clause} ORDER BY created_at DESC, command_id DESC LIMIT ? OFFSET ?",
+            args + [int(limit), int(offset)],
+        ).fetchall()
+        return {"items": [self._command_row(r) for r in rows], "total": total,
+                "limit": int(limit), "offset": int(offset)}
+
+    def pending_commands(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """Queued commands, oldest first (FIFO). Does not change status (robot acks)."""
+        rows = self.conn.execute(
+            "SELECT * FROM commands WHERE status='queued' ORDER BY created_at ASC, command_id ASC LIMIT ?",
+            (int(limit),),
+        ).fetchall()
+        return [self._command_row(r) for r in rows]
+
+    def ack_command(self, command_id: str) -> Optional[Dict[str, Any]]:
+        """queued -> sent (idempotent). Returns the command, or None if it doesn't exist."""
+        self.conn.execute(
+            "UPDATE commands SET status='sent', updated_at=? WHERE command_id=? AND status='queued'",
+            (now_iso(), command_id),
+        )
+        self.conn.commit()
+        return self.get_command(command_id)
+
+    def set_command_result(self, command_id: str, status: str, result: str) -> Optional[Dict[str, Any]]:
+        """Robot receipt -> done|failed|canceled + result text. None if command absent."""
+        if status not in ("done", "failed", "canceled"):
+            status = "done"
+        cur = self.conn.execute(
+            "UPDATE commands SET status=?, result=?, updated_at=? WHERE command_id=?",
+            (status, result or "", now_iso(), command_id),
+        )
+        self.conn.commit()
+        return self.get_command(command_id) if cur.rowcount else None
+
     # -------------------------------------------------------------------- read
     def _event_row(self, row: sqlite3.Row, with_brief: bool) -> Dict[str, Any]:
         d = {

@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.backend import assets as assets_mod
+from app.backend import commands as commands_mod
 from app.backend import config, images, ingest
 from app.backend import push as push_mod
 from app.backend import store as store_mod
@@ -156,6 +157,59 @@ def update_asset(asset_id: int, body: dict, _=Depends(require_token)):
     body["id"] = asset_id
     STORE.upsert_asset(body)
     return JSONResponse({"id": asset_id, "updated": True})
+
+
+# ---------------------------------------------------- commands (App -> robot)
+@app.post("/api/commands")
+def create_command(body: dict, _=Depends(require_token)):
+    ctype = str(body.get("type", ""))
+    params = body.get("params", {})
+    err = commands_mod.validate_command(ctype, params)
+    if err:
+        raise HTTPException(400, err)
+    cmd = STORE.insert_command(ctype, commands_mod.normalize_params(ctype, params),
+                               str(body.get("issued_by", "app")))
+    BROKER.publish("command", {"type": "command", "payload": cmd})
+    return JSONResponse(status_code=201, content=cmd)
+
+
+@app.get("/api/commands")
+def list_commands(status: Optional[str] = None, type: Optional[str] = None,
+                  since: Optional[str] = None, limit: int = 50, offset: int = 0):
+    return STORE.list_commands(status=status, type=type, since=since, limit=limit, offset=offset)
+
+
+@app.get("/api/commands/{command_id}")
+def get_command(command_id: str):
+    c = STORE.get_command(command_id)
+    if not c:
+        raise HTTPException(404, "command not found")
+    return c
+
+
+# -------------------------------------------- robot command pull + receipt
+@app.get("/api/robot/commands/pending")
+def robot_pending(limit: int = 20, _=Depends(require_token)):
+    return {"items": STORE.pending_commands(limit=limit)}
+
+
+@app.post("/api/robot/commands/{command_id}/ack")
+def robot_ack(command_id: str, _=Depends(require_token)):
+    c = STORE.ack_command(command_id)
+    if not c:
+        raise HTTPException(404, "command not found")
+    BROKER.publish("command", {"type": "command", "payload": c})
+    return c
+
+
+@app.post("/api/robot/commands/{command_id}/result")
+def robot_result(command_id: str, body: dict, _=Depends(require_token)):
+    c = STORE.set_command_result(command_id, str(body.get("status", "done")),
+                                 str(body.get("result", "")))
+    if not c:
+        raise HTTPException(404, "command not found")
+    BROKER.publish("command", {"type": "command", "payload": c})
+    return c
 
 
 # --------------------------------------------------------------------- images
