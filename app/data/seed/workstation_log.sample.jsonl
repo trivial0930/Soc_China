@@ -1,0 +1,4 @@
+{"station_id": "desk-03", "entered_at": 1718798400.0, "left_at": 1718800200.0, "snapshots": ["demo_desk03_arrive.jpg", "demo_desk03_leave.jpg"], "note": "课中实验,离场时检测到电烙铁未关。", "acceptance_hint": "存在安全隐患"}
+{"station_id": "desk-05", "entered_at": 1718798700.0, "left_at": 1718801100.0, "snapshots": ["demo_desk05_arrive.jpg"], "note": "桌面导线散落、仪器未归位。", "acceptance_hint": "需整理"}
+{"station_id": "desk-01", "entered_at": 1718799000.0, "left_at": 1718802000.0, "snapshots": ["demo_desk01_arrive.jpg"], "note": "整理完毕,桌面整洁。", "acceptance_hint": "合格"}
+{"station_id": "desk-02", "entered_at": 1718802300.0, "left_at": null, "snapshots": ["demo_desk02_arrive.jpg"], "note": "", "acceptance_hint": ""}

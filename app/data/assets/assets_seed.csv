@@ -1,0 +1,13 @@
+name,category,station_id,area,cabinet,drawer,box,quantity,note
+数字示波器,large,desk-03,A区,,,,1,Tektronix TBS1102
+万用表,large,desk-01,A区,,,,4,优利德UT89X
+信号发生器,large,desk-05,B区,,,,2,
+直流电源,large,desk-02,A区,,,,3,
+频谱仪,large,desk-08,C区,,,,1,
+0.25W电阻10kΩ,small,,,元件柜2,抽屉3,盒B,500,
+0.25W电阻1kΩ,small,,,元件柜2,抽屉3,盒A,500,
+贴片电容0.1uF,small,,,元件柜2,抽屉5,盒C,800,
+杜邦线公对母,small,,,耗材柜1,抽屉1,盒A,200,
+面包板,small,,,耗材柜1,抽屉2,盒D,30,
+STM32芯片,small,,,元件柜3,抽屉1,盒A,50,
+排针2.54mm,small,,,耗材柜1,抽屉3,盒E,1000,

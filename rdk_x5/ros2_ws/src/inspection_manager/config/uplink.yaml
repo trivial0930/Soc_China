@@ -1,0 +1,12 @@
+uplink_node:
+  ros__parameters:
+    # Management-app backend (Mac/edge). Point at the Mac's LAN/hotspot IP:port.
+    backend_url: "http://192.168.128.100:8000"
+    ingest_token: ""              # set to match backend APP_INGEST_TOKEN if write-auth is on
+    upload_images: true           # read evidence/snapshot JPGs from disk and upload them
+    hazard_topic: "/hazard/events"
+    brief_topic: "/inspection/brief"
+    record_topic: "/inspection/workstation_record"
+    report_topic: "/inspection/report"
+    flush_sec: 5.0                # retry-queue flush period
+    max_attempts: 5              # drop a payload after this many failed POSTs

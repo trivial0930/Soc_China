@@ -1,0 +1,23 @@
+[
+  {
+    "event_id": "20260619-203000-0001",
+    "explanation": "3号工位检测到电烙铁,孤儿热点温度达152℃,课后19:30工位无人,存在烫伤与火灾风险,建议立即断电并复核。",
+    "confirmed_severity": "critical",
+    "actions": ["voice", "recheck", "aim", "log"],
+    "escalate_to_cloud": true
+  },
+  {
+    "event_id": "20260619-204500-0002",
+    "explanation": "5号工位桌面导线散落、仪器未归位,属课后待整理,建议提醒学生整理。",
+    "confirmed_severity": "warning",
+    "actions": ["voice", "log"],
+    "escalate_to_cloud": false
+  },
+  {
+    "event_id": "20260619-210000-0003",
+    "explanation": "1号工位插排48℃属正常工作温度,课中有人在场,判为正常,记录即可。",
+    "confirmed_severity": "info",
+    "actions": ["log"],
+    "escalate_to_cloud": false
+  }
+]

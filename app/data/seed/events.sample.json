@@ -1,0 +1,38 @@
+[
+  {
+    "event_id": "20260619-203000-0001",
+    "timestamp": "2026-06-19T20:30:00+08:00",
+    "station_id": "desk-03",
+    "source": "thermal",
+    "event_type": "thermal_risk",
+    "severity": "critical",
+    "confidence": 0.91,
+    "summary": "3号工位检测到电烙铁,孤儿热点152℃,疑似课后未断电",
+    "image": "demo_solder.jpg",
+    "action": {"robot_task": "", "voice_prompt": "三号工位电烙铁未关闭,请处理", "reported_to_admin": true}
+  },
+  {
+    "event_id": "20260619-204500-0002",
+    "timestamp": "2026-06-19T20:45:00+08:00",
+    "station_id": "desk-05",
+    "source": "camera",
+    "event_type": "desk_messy",
+    "severity": "warning",
+    "confidence": 0.7,
+    "summary": "5号工位桌面导线散落、仪器未归位",
+    "image": "demo_desk.jpg",
+    "action": {"robot_task": "", "voice_prompt": "", "reported_to_admin": false}
+  },
+  {
+    "event_id": "20260619-210000-0003",
+    "timestamp": "2026-06-19T21:00:00+08:00",
+    "station_id": "desk-01",
+    "source": "thermal",
+    "event_type": "thermal_risk",
+    "severity": "info",
+    "confidence": 0.6,
+    "summary": "1号工位插排48℃,经核为正常负载",
+    "image": "",
+    "action": {"robot_task": "", "voice_prompt": "", "reported_to_admin": false}
+  }
+]

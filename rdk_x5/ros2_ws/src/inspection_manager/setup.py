@@ -28,6 +28,7 @@ setup(
             "recheck_node = inspection_manager.recheck_node:main",
             "sim_hazard_publisher = inspection_manager.sim_hazard_publisher:main",
             "workstation_record_node = inspection_manager.workstation_record_node:main",
+            "uplink_node = inspection_manager.uplink_node:main",
         ],
     },
 )

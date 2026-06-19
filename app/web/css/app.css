@@ -1,0 +1,71 @@
+:root {
+  --bg: #f2f4f7; --card: #fff; --ink: #1f2933; --muted: #6b7785; --line: #e3e8ee;
+  --info: #5b6b7b; --warning: #e8853a; --critical: #d63b3b; --ok: #2e9b5b;
+  --accent: #2b6cb0;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; }
+body {
+  font: 15px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg); color: var(--ink);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.topbar {
+  position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between;
+  background: var(--ink); color: #fff; padding: 12px 16px; padding-top: calc(12px + env(safe-area-inset-top));
+}
+.topbar .title { font-weight: 600; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #888; }
+.dot.on { background: #46d27a; } .dot.off { background: #d63b3b; }
+
+main { padding: 12px; max-width: 720px; margin: 0 auto; padding-bottom: 76px; }
+.loading, .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+
+.card {
+  background: var(--card); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06); border-left: 4px solid var(--line);
+}
+.card.info { border-left-color: var(--info); }
+.card.warning { border-left-color: var(--warning); }
+.card.critical { border-left-color: var(--critical); }
+.card .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.card .summary { font-weight: 600; margin: 2px 0; }
+.card .meta { color: var(--muted); font-size: 13px; }
+.card img.thumb { width: 100%; max-height: 180px; object-fit: cover; border-radius: 8px; margin-top: 8px; background: #eee; }
+
+.badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; color: #fff; }
+.b-info { background: var(--info); } .b-warning { background: var(--warning); }
+.b-critical { background: var(--critical); } .b-ok { background: var(--ok); }
+.b-合格 { background: var(--ok); } .b-需整理 { background: var(--warning); } .b-存在安全隐患 { background: var(--critical); }
+
+.btn { border: 0; border-radius: 8px; padding: 8px 14px; font-size: 14px; background: var(--accent); color: #fff; }
+.btn.ghost { background: #eef2f6; color: var(--ink); }
+.btn:disabled { opacity: .5; }
+.handled-tag { color: var(--ok); font-size: 13px; }
+
+.bottomnav {
+  position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: #fff; border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom); z-index: 10;
+}
+.bottomnav a {
+  flex: 1; text-align: center; padding: 8px 0 6px; color: var(--muted); text-decoration: none;
+  font-size: 11px; display: flex; flex-direction: column; gap: 2px; position: relative;
+}
+.bottomnav a.active { color: var(--accent); }
+.bottomnav .ico { font-size: 20px; }
+.bottomnav .badge { position: absolute; top: 4px; right: 22%; background: var(--critical); }
+.hidden { display: none; }
+
+.searchbar { display: flex; gap: 8px; margin-bottom: 12px; }
+.searchbar input { flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; }
+.filters { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 10px; }
+.chip { white-space: nowrap; padding: 5px 12px; border: 1px solid var(--line); border-radius: 16px; background: #fff; font-size: 13px; color: var(--muted); }
+.chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.report-body { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.report-body h1 { font-size: 20px; } .report-body h2 { font-size: 17px; margin-top: 18px; }
+.report-body h3 { font-size: 15px; } .report-body hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+.report-body ul { padding-left: 20px; } .report-body blockquote { color: var(--muted); border-left: 3px solid var(--line); margin: 0; padding-left: 12px; }
+.back { color: var(--accent); background: none; border: 0; padding: 0 0 10px; font-size: 14px; }
+.gallery { display: flex; gap: 8px; overflow-x: auto; margin-top: 8px; }
+.gallery img { height: 110px; border-radius: 8px; object-fit: cover; }
