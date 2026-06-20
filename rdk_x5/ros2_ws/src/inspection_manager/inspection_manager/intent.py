@@ -5,8 +5,9 @@ Station ids match the project format desk-0N (see tests/test_command_receiver.py
 """
 from __future__ import annotations
 
+import json
 import re
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 _CN_DIGIT = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
              "六": 6, "七": 7, "八": 8, "九": 9}
@@ -74,3 +75,35 @@ def parse_intent(text: str, station_fmt: str = "desk-{:02d}") -> Optional[Dict]:
             return {"type": "recheck_station", "params": {"station_id": sid}}
 
     return None
+
+
+_ALLOWED_TYPES = {"voice_prompt", "recheck_station", "inspection_round",
+                  "laser_point", "acceptance", "generate_report"}
+
+INTENT_SCHEMA_PROMPT = (
+    "你是实验室巡检机器人的语音指令解析器。把用户的话解析成一个 JSON 命令,"
+    "只输出 JSON,不要解释。命令格式:{\"type\": <类型>, \"params\": {...}, \"confidence\": 0~1}。"
+    "类型枚举与参数:"
+    "voice_prompt{text};recheck_station{station_id};inspection_round{};"
+    "laser_point{station_id};acceptance{station_id 或 \"all\"};generate_report{report_type}。"
+    "station_id 形如 desk-03。听不懂就给低 confidence。用户说:"
+)
+
+
+def vlm_fallback(text: str, chat_fn: "Callable[[str], str]", min_conf: float = 0.5) -> Optional[Dict]:
+    try:
+        raw = chat_fn(INTENT_SCHEMA_PROMPT + text)
+    except Exception:  # noqa: BLE001 - model offline/timeout -> give up
+        return None
+    m = re.search(r"\{.*\}", raw or "", re.DOTALL)
+    if not m:
+        return None
+    try:
+        obj = json.loads(m.group(0))
+    except (ValueError, TypeError):
+        return None
+    if obj.get("type") not in _ALLOWED_TYPES:
+        return None
+    if float(obj.get("confidence", 0.0)) < min_conf:
+        return None
+    return {"type": obj["type"], "params": obj.get("params") or {}}

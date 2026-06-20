@@ -5,7 +5,7 @@ from pathlib import Path
 PACKAGE_SRC = Path(__file__).resolve().parents[1] / "rdk_x5" / "ros2_ws" / "src" / "inspection_manager"
 sys.path.insert(0, str(PACKAGE_SRC))
 
-from inspection_manager.intent import parse_intent, parse_station_id  # noqa: E402
+from inspection_manager.intent import parse_intent, parse_station_id, vlm_fallback  # noqa: E402
 
 
 class StationIdTests(unittest.TestCase):
@@ -54,6 +54,28 @@ class IntentTests(unittest.TestCase):
 
     def test_laser_without_station_returns_none(self):
         self.assertIsNone(parse_intent("激光指示"))
+
+
+class VlmFallbackTests(unittest.TestCase):
+    def test_parses_json_command(self):
+        chat = lambda p: '好的 {"type": "recheck_station", "params": {"station_id": "desk-04"}, "confidence": 0.9}'
+        self.assertEqual(vlm_fallback("到四号桌那边瞧瞧", chat),
+                         {"type": "recheck_station", "params": {"station_id": "desk-04"}})
+
+    def test_low_confidence_returns_none(self):
+        chat = lambda p: '{"type": "inspection_round", "params": {}, "confidence": 0.2}'
+        self.assertIsNone(vlm_fallback("嗯啊这个", chat))
+
+    def test_unknown_type_returns_none(self):
+        chat = lambda p: '{"type": "dance", "params": {}, "confidence": 0.99}'
+        self.assertIsNone(vlm_fallback("跳个舞", chat))
+
+    def test_garbage_returns_none(self):
+        self.assertIsNone(vlm_fallback("x", lambda p: "我不知道你在说什么"))
+
+    def test_chat_exception_returns_none(self):
+        def boom(p): raise RuntimeError("offline")
+        self.assertIsNone(vlm_fallback("x", boom))
 
 
 if __name__ == "__main__":
