@@ -100,6 +100,26 @@ class ControllerTests(unittest.TestCase):
         c.tick(0.0); c.tick(0.1)
         self.assertEqual(ex.plans[-1]["actions"][0]["topic_key"], "recheck_topic")
 
+    def test_unsupported_plan_not_executed_but_replies(self):
+        # desk-09 is NOT in STATIONS waypoints -> dispatch_command returns unsupported
+        c, _, spoken, ex = _make([wake_event(), utterance_event("去九号桌复核")])
+        c.tick(0.0); c.tick(0.1)
+        self.assertEqual(ex.plans, [])                  # unsupported -> executor NOT called
+        self.assertTrue(spoken[-1].startswith("抱歉"))  # but a reply is still spoken
+
+    def test_wake_while_dialog_is_ignored(self):
+        c, be, spoken, _ = _make([wake_event(), wake_event()])
+        c.tick(0.0)                                     # 1st wake: idle -> dialog, ack "我在"
+        c.tick(0.1)                                     # 2nd wake while dialog -> ignored
+        self.assertEqual(spoken, ["我在"])              # no second ack
+        self.assertEqual(c.state, "dialog")
+
+    def test_utterance_while_idle_is_ignored(self):
+        c, _, spoken, ex = _make([utterance_event("去三号桌复核")])
+        c.tick(0.0)                                     # utterance in idle -> consumed, no action
+        self.assertEqual(ex.plans, [])
+        self.assertEqual(spoken, [])
+
 
 if __name__ == "__main__":
     unittest.main()

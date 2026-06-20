@@ -7,7 +7,7 @@ calls it on a fast timer. Rule intent first; optional VLM fallback via vlm_chat_
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional
+from typing import Callable, Dict, Optional
 
 from inspection_manager import dialog
 from inspection_manager.intent import vlm_fallback
