@@ -21,5 +21,85 @@ class MockBackendTests(unittest.TestCase):
         self.assertEqual(be.modes, ["dialog", "kws"])
 
 
+from inspection_manager.asr_controller import AsrController  # noqa: E402
+from inspection_manager.intent import parse_intent  # noqa: E402
+
+STATIONS = {"waypoints": {"wp_desk03": "desk-03"}}
+GIMBAL = {"aim": {"desk-03": [12.6, -11.6]}}
+
+
+def _dispatch(cmd, stations_cfg, gimbal_cfg):
+    from inspection_manager.command_receiver import dispatch_command
+    return dispatch_command(cmd, stations_cfg, gimbal_cfg)
+
+
+class FakeExecutor:
+    def __init__(self): self.plans = []
+    def execute(self, plan):
+        self.plans.append(plan); return plan.get("result")
+
+
+def _make(events, **kw):
+    be = MockAsrBackend(events)
+    spoken = []
+    ex = FakeExecutor()
+    c = AsrController(be, parse_intent, _dispatch, ex, spoken.append,
+                      stations_cfg=STATIONS, gimbal_cfg=GIMBAL, dialog_timeout_sec=8.0, **kw)
+    return c, be, spoken, ex
+
+
+class ControllerTests(unittest.TestCase):
+    def test_starts_idle_in_kws_mode(self):
+        c, be, _, _ = _make([])
+        self.assertEqual(c.state, "idle")
+        self.assertEqual(be.modes[-1], "kws")
+
+    def test_wake_acks_and_enters_dialog(self):
+        c, be, spoken, _ = _make([wake_event()])
+        c.tick(0.0)
+        self.assertEqual(c.state, "dialog")
+        self.assertEqual(spoken, ["我在"])
+        self.assertEqual(be.modes[-1], "dialog")
+
+    def test_utterance_dispatches_and_replies(self):
+        c, be, spoken, ex = _make([wake_event(), utterance_event("激光指示三号桌")])
+        c.tick(0.0); c.tick(0.1)
+        self.assertEqual(ex.plans[-1]["laser_aim"], [12.6, -11.6])
+        self.assertEqual(spoken[-1], "激光已指向 desk-03(pan=12.6,tilt=-11.6)")
+
+    def test_moving_command_downgrade_phrasing(self):
+        c, _, spoken, _ = _make([wake_event(), utterance_event("去三号桌复核")])
+        c.tick(0.0); c.tick(0.1)
+        self.assertIn("底盘移动还在调试", spoken[-1])
+
+    def test_not_understood(self):
+        c, _, spoken, ex = _make([wake_event(), utterance_event("今天星期几")])
+        c.tick(0.0); c.tick(0.1)
+        self.assertIn("没太听清", spoken[-1])
+        self.assertEqual(ex.plans, [])
+
+    def test_dialog_timeout_returns_to_idle(self):
+        c, be, _, _ = _make([wake_event()])
+        c.tick(0.0)
+        c.tick(9.0)                          # 9s 静默 > 8s 超时
+        self.assertEqual(c.state, "idle")
+        self.assertEqual(be.modes[-1], "kws")
+
+    def test_set_enabled_false_disables(self):
+        c, be, _, _ = _make([])
+        c.set_enabled(False)
+        self.assertEqual(c.state, "disabled")
+        self.assertEqual(be.modes[-1], "off")
+        c.tick(0.0)                          # disabled 时 tick 不处理事件
+        self.assertEqual(c.state, "disabled")
+
+    def test_vlm_fallback_used_when_rule_misses(self):
+        c, _, spoken, ex = _make(
+            [wake_event(), utterance_event("麻烦到三号桌那边瞅一眼")],
+            vlm_chat_fn=lambda p: '{"type":"recheck_station","params":{"station_id":"desk-03"},"confidence":0.9}')
+        c.tick(0.0); c.tick(0.1)
+        self.assertEqual(ex.plans[-1]["actions"][0]["topic_key"], "recheck_topic")
+
+
 if __name__ == "__main__":
     unittest.main()
