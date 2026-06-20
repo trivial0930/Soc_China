@@ -64,8 +64,10 @@ class CommandReceiverNode(Node):
             "gimbal_enable_topic": self.create_publisher(Bool, str(g("gimbal_enable_topic").value), 10),
             "laser_topic": self.create_publisher(Bool, str(g("laser_topic").value), 10),
         }
-        self.executor = CommandExecutor(self._publish_primitive, self.create_timer,
-                                        self.laser_indicate_sec)
+        # NB: not self.executor — rclpy.Node.executor is a reserved property (its
+        # setter calls add_node), so a plain attr name would collide and crash on init.
+        self._cmd_executor = CommandExecutor(self._publish_primitive, self.create_timer,
+                                             self.laser_indicate_sec)
         self.create_timer(float(g("poll_sec").value), self._poll)
         self.get_logger().info(f"command_receiver_node up -> {self.poster.base}")
 
@@ -130,7 +132,7 @@ class CommandReceiverNode(Node):
             self._report(cid, "failed", plan["unsupported"])
             return
         try:
-            result = self.executor.execute(plan)
+            result = self._cmd_executor.execute(plan)
             self.get_logger().info(f"{cid} -> {result}")
             self._report(cid, "done", result)
         except Exception as exc:  # noqa: BLE001
