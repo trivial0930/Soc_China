@@ -1,7 +1,7 @@
 asr_node:
   ros__parameters:
     enabled: true
-    mic_device: ""
+    mic_device: "ES8326"        # on-board codec capture (hw:1,0); USB hw:0,0 is output-only
     sample_rate: 16000
     num_threads: 2
     kws_model_dir: "/root/sherpa/sherpa-onnx-kws-zipformer-wenetspeech"
@@ -11,7 +11,7 @@ asr_node:
     dialog_timeout_sec: 8.0
     wake_ack_text: "我在"
     tick_sec: 0.05
-    vlm_fallback_enabled: true
+    vlm_fallback_enabled: false   # bring-up: rules cover demo commands; no VLM at :8080 yet
     vlm_base_url: "http://localhost:8080/v1"
     vlm_model: "qwen2.5-7b-instruct"
     vlm_api_key: ""

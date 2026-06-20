@@ -26,6 +26,24 @@ def utterance_event(text: str) -> Dict[str, Any]:
     return {"kind": "utterance", "text": text}
 
 
+def _resolve_onnx(model_dir: str, prefix: str) -> str:
+    """Resolve <prefix>.onnx, else the preferred epoch-tagged file in a model dir.
+
+    The KWS wenetspeech package ships e.g. encoder-epoch-99-avg-1-...onnx (plus an
+    epoch-12 set and .int8 variants). Prefer the float files and the latest epoch.
+    """
+    import glob
+    import os
+
+    exact = os.path.join(model_dir, f"{prefix}.onnx")
+    if os.path.exists(exact):
+        return exact
+    cands = glob.glob(os.path.join(model_dir, f"{prefix}*.onnx"))
+    pool = [c for c in cands if ".int8." not in c] or cands
+    pool.sort()
+    return pool[-1] if pool else exact
+
+
 class MockAsrBackend:
     def __init__(self, events: List[Dict[str, Any]]) -> None:
         self._events = list(events)
@@ -65,34 +83,29 @@ class SherpaAsrBackend:
         nthreads = int(cfg.get("num_threads", 2))
 
         # --- KWS: wake-word spotter ("小巡" / "巡检助手", from keywords_file) ---
+        # sherpa-onnx 1.13.3 uses a flat KeywordSpotter(...) ctor (no KeywordSpotterConfig).
+        # The wenetspeech model ships epoch-tagged onnx names, so resolve them (prefer the
+        # float epoch-99-avg-1 set) rather than assuming encoder.onnx. Verified on-board.
         kdir = cfg["kws_model_dir"]
         self._kws = sherpa_onnx.KeywordSpotter(
-            sherpa_onnx.KeywordSpotterConfig(
-                keywords_file=cfg["kws_keywords_file"],
-                model=sherpa_onnx.KeywordSpotterModelConfig(
-                    encoder=os.path.join(kdir, "encoder.onnx"),
-                    decoder=os.path.join(kdir, "decoder.onnx"),
-                    joiner=os.path.join(kdir, "joiner.onnx"),
-                    tokens=os.path.join(kdir, "tokens.txt"),
-                    num_threads=nthreads,
-                ),
-            )
+            tokens=os.path.join(kdir, "tokens.txt"),
+            encoder=_resolve_onnx(kdir, "encoder"),
+            decoder=_resolve_onnx(kdir, "decoder"),
+            joiner=_resolve_onnx(kdir, "joiner"),
+            keywords_file=cfg["kws_keywords_file"],
+            num_threads=nthreads,
+            keywords_threshold=float(cfg.get("kws_threshold", 0.25)),
         )
         self._kws_stream = self._kws.create_stream()
 
-        # --- VAD: segments dialog speech into utterances ---
-        self._vad = sherpa_onnx.VoiceActivityDetector(
-            sherpa_onnx.VadModelConfig(
-                silero_vad=sherpa_onnx.SileroVadModelConfig(
-                    model=cfg["vad_model"],
-                    threshold=0.5,
-                    min_silence_duration=0.5,
-                    min_speech_duration=0.25,
-                ),
-                sample_rate=self._sr,
-            ),
-            buffer_size_in_seconds=30,
-        )
+        # --- VAD: segments dialog speech into utterances (attribute-style config) ---
+        vad_config = sherpa_onnx.VadModelConfig()
+        vad_config.silero_vad.model = cfg["vad_model"]
+        vad_config.silero_vad.threshold = 0.5
+        vad_config.silero_vad.min_silence_duration = 0.5
+        vad_config.silero_vad.min_speech_duration = 0.25
+        vad_config.sample_rate = self._sr
+        self._vad = sherpa_onnx.VoiceActivityDetector(vad_config, buffer_size_in_seconds=30)
 
         # --- Offline ASR: SenseVoice int8 full-sentence recognition ---
         adir = cfg["asr_model_dir"]
@@ -146,12 +159,14 @@ class SherpaAsrBackend:
 
     def _poll_kws(self, audio) -> Optional[Dict[str, Any]]:  # pragma: no cover - board only
         self._kws_stream.accept_waveform(self._sr, audio)
+        # The spotter reports a hit transiently at the detection frame, so get_result
+        # MUST be polled inside the decode loop (a post-loop check misses it). Verified
+        # on-board: 0 hits when checked after the loop, hits when checked per-frame.
         while self._kws.is_ready(self._kws_stream):
             self._kws.decode_stream(self._kws_stream)
-        keyword = self._kws.get_result(self._kws_stream)
-        if keyword:
-            self._kws_stream = self._kws.create_stream()  # reset for the next wake
-            return wake_event()
+            if self._kws.get_result(self._kws_stream):
+                self._kws.reset_stream(self._kws_stream)  # ready for the next wake
+                return wake_event()
         return None
 
     def _poll_dialog(self, audio) -> Optional[Dict[str, Any]]:  # pragma: no cover - board only
