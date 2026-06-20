@@ -45,10 +45,12 @@ class CommandExecutor:
             self._publish("gimbal_topic", "vector3", [self._aim_target[0], self._aim_target[1], 0.0])
 
     def _stop_laser(self) -> None:
-        self._publish("laser_topic", "bool", False)
-        for t in (self._sustain_timer, self._stop_timer):
-            if t is not None:
-                t.cancel()
+        # Detach timers before canceling so a re-entrant stop is a no-op.
+        sustain, stop = self._sustain_timer, self._stop_timer
         self._sustain_timer = None
         self._stop_timer = None
         self._aim_target = None
+        self._publish("laser_topic", "bool", False)
+        for t in (sustain, stop):
+            if t is not None:
+                t.cancel()

@@ -60,6 +60,17 @@ class CommandExecutorTests(unittest.TestCase):
         self.assertIn(("laser_topic", "bool", False), self.h.published)
         self.assertTrue(all(t.canceled for _, _, t in self.h.timers))
 
+    def test_execute_plan_without_actions_or_laser_returns_result(self):
+        self.assertEqual(self.ex.execute({"result": "ok"}), "ok")
+        self.assertEqual(self.h.published, [])
+
+    def test_second_laser_cancels_previous_timers(self):
+        self.ex.execute({"laser_aim": [1.0, 2.0], "result": "x"})
+        first_timers = list(self.h.timers)            # 2 timers from the first call
+        self.ex.execute({"laser_aim": [3.0, 4.0], "result": "y"})
+        for _, _, t in first_timers:                  # pre-emption guard must cancel them
+            self.assertTrue(t.canceled)
+
 
 if __name__ == "__main__":
     unittest.main()
