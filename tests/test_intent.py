@@ -48,6 +48,13 @@ class IntentTests(unittest.TestCase):
     def test_unmatched_returns_none(self):
         self.assertIsNone(parse_intent("今天天气怎么样"))
 
+    def test_bare_number_not_a_station(self):
+        # "5月" must NOT be parsed as a station -> whole sentence is None
+        self.assertIsNone(parse_intent("检查一下5月份的巡检记录"))
+
+    def test_laser_without_station_returns_none(self):
+        self.assertIsNone(parse_intent("激光指示"))
+
 
 if __name__ == "__main__":
     unittest.main()

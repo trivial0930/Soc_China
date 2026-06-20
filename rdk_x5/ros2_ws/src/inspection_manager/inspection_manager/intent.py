@@ -25,7 +25,7 @@ def _cn_to_int(s: str) -> Optional[int]:
 
 
 def parse_station_id(text: str, station_fmt: str = "desk-{:02d}") -> Optional[str]:
-    m = re.search(r"(\d{1,2})\s*[号]?\s*(?:桌|工位|号位|台)?", text)
+    m = re.search(r"(\d{1,2})\s*(?:号|桌|台|工位|号位)", text)
     if m:
         return station_fmt.format(int(m.group(1)))
     m = re.search(r"([零一二两三四五六七八九十]{1,3})\s*号", text)
@@ -47,7 +47,7 @@ def parse_intent(text: str, station_fmt: str = "desk-{:02d}") -> Optional[Dict]:
         return {"type": "voice_prompt", "params": {"text": m.group(1).strip()}}
 
     # generate_report
-    if re.search(r"(生成|出|做).*(报告)", t) or "巡检报告" in t:
+    if re.search(r"(生成|导出|汇总|出具).*(报告)", t) or "巡检报告" in t:
         return {"type": "generate_report", "params": {"report_type": "periodic_summary"}}
 
     # acceptance
