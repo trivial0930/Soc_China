@@ -17,6 +17,7 @@ from inspection_manager.asr_controller import AsrController
 from inspection_manager.asr_engine import SherpaAsrBackend
 from inspection_manager.command_executor import CommandExecutor
 from inspection_manager.command_receiver import dispatch_command
+from inspection_manager.intent import parse_intent
 
 
 class AsrNode(Node):
@@ -34,6 +35,9 @@ class AsrNode(Node):
             ("enabled_state_file", "~/.asr_enabled"), ("gimbal_topic", "/gimbal/target_angle"),
             ("gimbal_enable_topic", "/gimbal/enable"), ("laser_topic", "/laser/enable"),
             ("laser_indicate_sec", 8.0),
+            ("recheck_topic", "/inspection/recheck"),
+            ("request_report_topic", "/inspection/request_report"),
+            ("acceptance_request_topic", "/inspection/acceptance_request"),
         ]:
             gp(name, default)
         g = self.get_parameter
@@ -41,6 +45,9 @@ class AsrNode(Node):
 
         self._string_pubs = {
             "voice_topic": self.create_publisher(String, str(g("voice_topic").value), 10),
+            "recheck_topic": self.create_publisher(String, str(g("recheck_topic").value), 10),
+            "request_report_topic": self.create_publisher(String, str(g("request_report_topic").value), 10),
+            "acceptance_request_topic": self.create_publisher(String, str(g("acceptance_request_topic").value), 10),
         }
         self._vector_pubs = {
             "gimbal_topic": self.create_publisher(Vector3, str(g("gimbal_topic").value), 10),
@@ -63,13 +70,13 @@ class AsrNode(Node):
             "asr_model_dir": str(g("asr_model_dir").value),
         })
 
-        from inspection_manager.intent import parse_intent
         self.controller = AsrController(
             backend, parse_intent, dispatch_command, executor,
             self._speak, stations_cfg=stations_cfg, gimbal_cfg=gimbal_cfg,
             dialog_timeout_sec=float(g("dialog_timeout_sec").value),
             enabled=self._load_enabled(bool(g("enabled").value)),
-            vlm_chat_fn=vlm_chat, wake_ack_text=str(g("wake_ack_text").value))
+            vlm_chat_fn=vlm_chat, wake_ack_text=str(g("wake_ack_text").value),
+            vlm_min_conf=float(g("vlm_min_confidence").value),)
 
         self.create_subscription(String, str(g("voice_control_topic").value), self._on_voice_control, 10)
         self._clock = self.get_clock()

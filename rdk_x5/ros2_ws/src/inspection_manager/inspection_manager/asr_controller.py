@@ -19,7 +19,8 @@ class AsrController:
                  speak_fn: Callable[[str], None], *, stations_cfg: Dict, gimbal_cfg: Dict,
                  dialog_timeout_sec: float = 8.0, enabled: bool = True,
                  vlm_chat_fn: Optional[Callable[[str], str]] = None,
-                 wake_ack_text: str = "我在") -> None:
+                 wake_ack_text: str = "我在",
+                 vlm_min_conf: float = 0.5) -> None:
         self._be = backend
         self._intent = intent_fn
         self._dispatch = dispatch_fn
@@ -29,6 +30,7 @@ class AsrController:
         self._gimbal = gimbal_cfg
         self._timeout = float(dialog_timeout_sec)
         self._vlm_chat = vlm_chat_fn
+        self._vlm_min_conf = float(vlm_min_conf)
         self._wake_text = wake_ack_text
         self._last_activity = 0.0
         self.state = "disabled"
@@ -64,11 +66,15 @@ class AsrController:
     def _handle_text(self, text: str) -> None:
         cmd = self._intent(text)
         if cmd is None and self._vlm_chat is not None:
-            cmd = vlm_fallback(text, self._vlm_chat)
+            cmd = vlm_fallback(text, self._vlm_chat, self._vlm_min_conf)
         if cmd is None:
             self._speak(dialog.not_understood())
             return
         plan = self._dispatch(cmd, self._stations, self._gimbal)
         if "unsupported" not in plan:
-            self._ex.execute(plan)
+            try:
+                self._ex.execute(plan)
+            except Exception:  # noqa: BLE001 - exec/publish error must not crash the tick
+                self._speak("抱歉,执行出错了")
+                return
         self._speak(dialog.reply_for(cmd["type"], plan))

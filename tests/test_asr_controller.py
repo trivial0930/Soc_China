@@ -120,6 +120,18 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(ex.plans, [])
         self.assertEqual(spoken, [])
 
+    def test_execute_error_is_spoken_not_raised(self):
+        class BoomExecutor:
+            def execute(self, plan):
+                raise RuntimeError("publish failed")
+        be = MockAsrBackend([wake_event(), utterance_event("激光指示三号桌")])
+        spoken = []
+        c = AsrController(be, parse_intent, _dispatch, BoomExecutor(), spoken.append,
+                          stations_cfg=STATIONS, gimbal_cfg=GIMBAL, dialog_timeout_sec=8.0)
+        c.tick(0.0)
+        c.tick(0.1)            # must NOT raise
+        self.assertIn("出错", spoken[-1])
+
 
 if __name__ == "__main__":
     unittest.main()

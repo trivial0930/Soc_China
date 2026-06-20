@@ -25,3 +25,6 @@ asr_node:
     gimbal_enable_topic: "/gimbal/enable"
     laser_topic: "/laser/enable"
     laser_indicate_sec: 8.0
+    recheck_topic: "/inspection/recheck"
+    request_report_topic: "/inspection/request_report"
+    acceptance_request_topic: "/inspection/acceptance_request"
