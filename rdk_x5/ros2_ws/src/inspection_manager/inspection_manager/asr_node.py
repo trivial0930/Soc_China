@@ -94,9 +94,12 @@ class AsrNode(Node):
 
     def _on_voice_control(self, msg: String) -> None:
         try:
-            enabled = bool(json.loads(msg.data).get("enabled"))
-        except (ValueError, TypeError):
+            parsed = json.loads(msg.data)
+        except ValueError:
             return
+        if not isinstance(parsed, dict) or "enabled" not in parsed:
+            return
+        enabled = bool(parsed["enabled"])
         self.controller.set_enabled(enabled)
         self._save_enabled(enabled)
 
