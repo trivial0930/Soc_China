@@ -87,13 +87,24 @@ def dispatch_command(cmd: Dict[str, Any], stations_cfg: Optional[Dict[str, Any]]
         angle = aim_angle(target, gimbal_cfg)
         if angle is None:
             return {"unsupported": f"目标 {target!r} 未在云台角度表(gimbal aim)配置,无法指示"}
-        return {"actions": [{"topic_key": "gimbal_topic", "kind": "vector3", "data": [angle[0], angle[1], 0.0]}],
+        # The node runs a timed routine: clear any FAULT, enable, sustain the target so
+        # the gimbal slews there (the controller faults if commands stop for >5s), laser
+        # on for the indication window, then laser off.
+        return {"laser_aim": [angle[0], angle[1]],
                 "result": f"激光已指向 {target}(pan={angle[0]},tilt={angle[1]})"}
 
     if ctype == "acceptance":
         target = str(params.get("station_id", "") or "all")
         return {"actions": [{"topic_key": "acceptance_request_topic", "kind": "string", "data": target}],
                 "result": f"已发起课后验收:{target}"}
+
+    if ctype == "voice_control":
+        enabled = params.get("enabled")
+        if not isinstance(enabled, bool):
+            return {"unsupported": "voice_control 需要布尔 params.enabled"}
+        return {"actions": [{"topic_key": "voice_control_topic", "kind": "string",
+                             "data": json.dumps({"enabled": enabled}, ensure_ascii=False)}],
+                "result": "语音监听已开启" if enabled else "语音监听已关闭"}
 
     return {"unsupported": f"机器人侧暂未接入命令类型:{ctype}"}
 

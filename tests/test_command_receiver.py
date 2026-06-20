@@ -57,12 +57,10 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(len(out["actions"]), 2)                       # one recheck per waypoint
         self.assertTrue(all(a["topic_key"] == "recheck_topic" for a in out["actions"]))
 
-    def test_laser_point_uses_angle_table(self):
-        act = self._one(dispatch_command({"type": "laser_point", "params": {"station_id": "desk-03"}},
-                                         STATIONS, GIMBAL))
-        self.assertEqual(act["topic_key"], "gimbal_topic")
-        self.assertEqual(act["kind"], "vector3")
-        self.assertEqual(act["data"], [12.6, -11.6, 0.0])
+    def test_laser_point_returns_aim_angle(self):
+        out = dispatch_command({"type": "laser_point", "params": {"station_id": "desk-03"}}, STATIONS, GIMBAL)
+        self.assertEqual(out["laser_aim"], [12.6, -11.6])             # node runs the timed routine
+        self.assertNotIn("unsupported", out)
 
     def test_laser_point_no_angle_unsupported(self):
         self.assertIn("unsupported",
@@ -84,6 +82,22 @@ class DispatchTests(unittest.TestCase):
     def test_expand_targets(self):
         self.assertEqual(expand_targets("desk-03", STATIONS), ["desk-03"])
         self.assertEqual(expand_targets("all", STATIONS), ["desk-01", "desk-03"])
+
+    def test_voice_control_enable(self):
+        out = dispatch_command({"type": "voice_control", "params": {"enabled": True}})
+        act = self._one(out)
+        self.assertEqual(act["topic_key"], "voice_control_topic")
+        self.assertEqual(json.loads(act["data"]), {"enabled": True})
+        self.assertEqual(out["result"], "语音监听已开启")
+
+    def test_voice_control_disable(self):
+        out = dispatch_command({"type": "voice_control", "params": {"enabled": False}})
+        self.assertEqual(json.loads(self._one(out)["data"]), {"enabled": False})
+        self.assertEqual(out["result"], "语音监听已关闭")
+
+    def test_voice_control_missing_enabled_unsupported(self):
+        self.assertIn("unsupported", dispatch_command({"type": "voice_control", "params": {}}))
+        self.assertIn("unsupported", dispatch_command({"type": "voice_control", "params": {"enabled": "yes"}}))
 
     def test_unknown_type_reported(self):
         self.assertIn("unsupported", dispatch_command({"type": "teleport", "params": {}}, STATIONS))
