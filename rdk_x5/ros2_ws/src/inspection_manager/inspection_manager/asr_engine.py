@@ -7,7 +7,15 @@ imports sherpa_onnx/sounddevice lazily so this module imports fine on a dev box.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol
+
+
+class AsrBackend(Protocol):
+    """Structural interface implemented by MockAsrBackend and SherpaAsrBackend."""
+
+    def set_mode(self, mode: str) -> None: ...
+
+    def poll(self) -> Optional[Dict[str, Any]]: ...
 
 
 def wake_event() -> Dict[str, Any]:
