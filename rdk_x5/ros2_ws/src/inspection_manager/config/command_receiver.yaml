@@ -13,4 +13,7 @@ command_receiver_node:
     recheck_topic: "/inspection/recheck"
     request_report_topic: "/inspection/request_report"
     gimbal_topic: "/gimbal/target_angle"
+    gimbal_enable_topic: "/gimbal/enable"      # laser_point enables the gimbal motors first
+    laser_topic: "/laser/enable"               # laser_node drives BOARD 12
+    laser_indicate_sec: 6.0                     # auto-off the laser this long after pointing
     acceptance_request_topic: "/inspection/acceptance_request"

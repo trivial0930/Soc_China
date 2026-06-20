@@ -17,7 +17,7 @@ from urllib.parse import quote
 import rclpy
 from geometry_msgs.msg import Vector3
 from rclpy.node import Node
-from std_msgs.msg import String
+from std_msgs.msg import Bool, String
 
 from inspection_manager.command_receiver import dispatch_command, find_item_to_command
 from inspection_manager.uplink import HttpPoster
@@ -37,6 +37,9 @@ class CommandReceiverNode(Node):
         gp("recheck_topic", "/inspection/recheck")
         gp("request_report_topic", "/inspection/request_report")
         gp("gimbal_topic", "/gimbal/target_angle")
+        gp("gimbal_enable_topic", "/gimbal/enable")
+        gp("laser_topic", "/laser/enable")
+        gp("laser_indicate_sec", 8.0)   # sustain aim + laser this long for one laser_point
         gp("acceptance_request_topic", "/inspection/acceptance_request")
 
         g = self.get_parameter
@@ -44,6 +47,7 @@ class CommandReceiverNode(Node):
         self.pending_limit = int(g("pending_limit").value)
         self.stations_cfg = self._read_yaml(str(g("stations_config").value))
         self.gimbal_cfg = self._read_yaml(str(g("gimbal_aim_config").value))
+        self.laser_indicate_sec = float(g("laser_indicate_sec").value)
         self.string_pubs = {
             "voice_topic": self.create_publisher(String, str(g("voice_topic").value), 10),
             "recheck_topic": self.create_publisher(String, str(g("recheck_topic").value), 10),
@@ -53,6 +57,13 @@ class CommandReceiverNode(Node):
         self.vector_pubs = {
             "gimbal_topic": self.create_publisher(Vector3, str(g("gimbal_topic").value), 10),
         }
+        self.bool_pubs = {
+            "gimbal_enable_topic": self.create_publisher(Bool, str(g("gimbal_enable_topic").value), 10),
+            "laser_topic": self.create_publisher(Bool, str(g("laser_topic").value), 10),
+        }
+        self._aim_target = None
+        self._aim_timer = None
+        self._aim_stop_timer = None
         self.create_timer(float(g("poll_sec").value), self._poll)
         self.get_logger().info(f"command_receiver_node up -> {self.poster.base}")
 
@@ -117,9 +128,12 @@ class CommandReceiverNode(Node):
             self._report(cid, "failed", plan["unsupported"])
             return
         try:
-            for act in plan["actions"]:
-                self._publish(act)
-            self.get_logger().info(f"{cid} -> {len(plan['actions'])} action(s): {plan['result']}")
+            if "laser_aim" in plan:
+                self._start_laser_indication(plan["laser_aim"])
+            else:
+                for act in plan["actions"]:
+                    self._publish(act)
+            self.get_logger().info(f"{cid} -> {plan['result']}")
             self._report(cid, "done", plan["result"])
         except Exception as exc:  # noqa: BLE001
             self.get_logger().warn(f"dispatch {cid} failed: {exc}")
@@ -129,8 +143,36 @@ class CommandReceiverNode(Node):
         if act["kind"] == "vector3":
             x, y, z = act["data"]
             self.vector_pubs[act["topic_key"]].publish(Vector3(x=float(x), y=float(y), z=float(z)))
+        elif act["kind"] == "bool":
+            self.bool_pubs[act["topic_key"]].publish(Bool(data=bool(act["data"])))
         else:
             self.string_pubs[act["topic_key"]].publish(String(data=act["data"]))
+
+    # --- laser indication: clear FAULT -> enable -> sustain target + laser -> off ---
+    def _start_laser_indication(self, angle: list) -> None:
+        self._aim_target = (float(angle[0]), float(angle[1]))
+        self.bool_pubs["gimbal_enable_topic"].publish(Bool(data=False))  # clear latched FAULT
+        self.bool_pubs["gimbal_enable_topic"].publish(Bool(data=True))   # enable closed loop
+        self.bool_pubs["laser_topic"].publish(Bool(data=True))           # laser on
+        if self._aim_timer is not None:
+            self._aim_timer.cancel()
+        if self._aim_stop_timer is not None:
+            self._aim_stop_timer.cancel()
+        self._aim_timer = self.create_timer(0.1, self._aim_tick)         # 10Hz sustain
+        self._aim_stop_timer = self.create_timer(self.laser_indicate_sec, self._stop_laser_indication)
+
+    def _aim_tick(self) -> None:
+        if self._aim_target:
+            p, t = self._aim_target
+            self.vector_pubs["gimbal_topic"].publish(Vector3(x=p, y=t, z=0.0))
+
+    def _stop_laser_indication(self) -> None:
+        self.bool_pubs["laser_topic"].publish(Bool(data=False))          # laser off
+        if self._aim_timer is not None:
+            self._aim_timer.cancel(); self._aim_timer = None
+        if self._aim_stop_timer is not None:
+            self._aim_stop_timer.cancel(); self._aim_stop_timer = None
+        self._aim_target = None
 
     def _report(self, cid: str, status: str, result: str) -> None:
         try:
