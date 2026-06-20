@@ -1,0 +1,27 @@
+asr_node:
+  ros__parameters:
+    enabled: true
+    mic_device: ""
+    sample_rate: 16000
+    num_threads: 2
+    kws_model_dir: "/root/sherpa/sherpa-onnx-kws-zipformer-wenetspeech"
+    kws_keywords_file: "/root/sherpa/keywords.txt"
+    vad_model: "/root/sherpa/silero_vad.onnx"
+    asr_model_dir: "/root/sherpa/sherpa-onnx-sense-voice-zh-int8"
+    dialog_timeout_sec: 8.0
+    wake_ack_text: "我在"
+    tick_sec: 0.05
+    vlm_fallback_enabled: true
+    vlm_base_url: "http://localhost:8080/v1"
+    vlm_model: "qwen2.5-7b-instruct"
+    vlm_api_key: ""
+    vlm_min_confidence: 0.5
+    stations_config: ""
+    gimbal_aim_config: ""
+    voice_topic: "/inspection/voice"
+    voice_control_topic: "/inspection/voice_control"
+    enabled_state_file: "~/.asr_enabled"
+    gimbal_topic: "/gimbal/target_angle"
+    gimbal_enable_topic: "/gimbal/enable"
+    laser_topic: "/laser/enable"
+    laser_indicate_sec: 8.0

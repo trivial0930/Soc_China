@@ -10,6 +10,7 @@ def generate_launch_description():
     cognition_cfg = PathJoinSubstitution([share, "config", "cognition.yaml"])
     stations_cfg = PathJoinSubstitution([share, "config", "stations.yaml"])
     report_cfg = PathJoinSubstitution([share, "config", "report.yaml"])
+    asr_cfg = PathJoinSubstitution([share, "config", "asr.yaml"])
 
     return LaunchDescription(
         [
@@ -57,6 +58,13 @@ def generate_launch_description():
                         "piper_model": LaunchConfiguration("piper_model"),
                     }
                 ],
+            ),
+            Node(
+                package="inspection_manager",
+                executable="asr_node",
+                name="asr_node",
+                output="screen",
+                parameters=[asr_cfg],
             ),
         ]
     )

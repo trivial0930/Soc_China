@@ -63,6 +63,13 @@ class OpenAICompatVLMClient:
         self._encode = encode
         self.timeout_s = timeout_s
 
+    def chat_text(self, prompt: str) -> str:
+        """Text-only chat (no image) for voice intent fallback. Returns model text."""
+        messages = [{"role": "user", "content": prompt}]
+        if self._transport is not None:
+            return self._transport(messages, self.model)
+        return self._default_transport(messages)
+
     def complete(self, prompt: str, images: List[str]) -> str:
         uris = [self._encode(path) for path in images]
         messages = build_messages(prompt, uris)
