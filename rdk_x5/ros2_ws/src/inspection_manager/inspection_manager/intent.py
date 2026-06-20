@@ -90,7 +90,7 @@ INTENT_SCHEMA_PROMPT = (
 )
 
 
-def vlm_fallback(text: str, chat_fn: "Callable[[str], str]", min_conf: float = 0.5) -> Optional[Dict]:
+def vlm_fallback(text: str, chat_fn: Callable[[str], str], min_conf: float = 0.5) -> Optional[Dict]:
     try:
         raw = chat_fn(INTENT_SCHEMA_PROMPT + text)
     except Exception:  # noqa: BLE001 - model offline/timeout -> give up
@@ -104,6 +104,10 @@ def vlm_fallback(text: str, chat_fn: "Callable[[str], str]", min_conf: float = 0
         return None
     if obj.get("type") not in _ALLOWED_TYPES:
         return None
-    if float(obj.get("confidence", 0.0)) < min_conf:
+    try:
+        conf = float(obj.get("confidence", 0.0))
+    except (ValueError, TypeError):
+        return None
+    if conf < min_conf:
         return None
     return {"type": obj["type"], "params": obj.get("params") or {}}

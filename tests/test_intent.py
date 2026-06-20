@@ -77,6 +77,10 @@ class VlmFallbackTests(unittest.TestCase):
         def boom(p): raise RuntimeError("offline")
         self.assertIsNone(vlm_fallback("x", boom))
 
+    def test_string_confidence_returns_none(self):
+        chat = lambda p: '{"type": "inspection_round", "params": {}, "confidence": "高"}'
+        self.assertIsNone(vlm_fallback("嗯", chat))
+
 
 if __name__ == "__main__":
     unittest.main()
