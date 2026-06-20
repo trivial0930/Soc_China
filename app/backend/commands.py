@@ -52,6 +52,14 @@ def _v_generate_report(p: Dict[str, Any]) -> Optional[str]:
     return None  # report_type optional (defaulted)
 
 
+def _v_voice_control(p: Dict[str, Any]) -> Optional[str]:
+    # enabled must be present and a real bool (reject 1/0/"true" so the robot
+    # toggle is unambiguous). isinstance(True, int) is True, so check bool first.
+    if not isinstance(p.get("enabled"), bool):
+        return "voice_control 需要布尔 params.enabled"
+    return None
+
+
 # type -> validator(params) -> error string or None
 COMMAND_VALIDATORS = {
     "inspection_round": _v_inspection_round,
@@ -61,6 +69,7 @@ COMMAND_VALIDATORS = {
     "voice_prompt": _v_voice_prompt,
     "laser_point": _v_laser_point,
     "generate_report": _v_generate_report,
+    "voice_control": _v_voice_control,
 }
 COMMAND_TYPES = frozenset(COMMAND_VALIDATORS)
 

@@ -41,6 +41,15 @@ class ValidateCommandTests(unittest.TestCase):
         self.assertIsNone(commands.validate_command("laser_point", {"location": "柜2/抽屉3"}))
         self.assertIsNotNone(commands.validate_command("laser_point", {}))
 
+    def test_voice_control_requires_bool_enabled(self):
+        self.assertIsNone(commands.validate_command("voice_control", {"enabled": True}))
+        self.assertIsNone(commands.validate_command("voice_control", {"enabled": False}))
+        # missing enabled, or non-bool (incl. truthy 1) -> rejected with the contract message
+        self.assertEqual(commands.validate_command("voice_control", {}),
+                         "voice_control 需要布尔 params.enabled")
+        self.assertEqual(commands.validate_command("voice_control", {"enabled": 1}),
+                         "voice_control 需要布尔 params.enabled")
+
     def test_normalize_defaults(self):
         self.assertEqual(commands.normalize_params("find_item", {"name": "x"})["mode"], "navigate")
         self.assertEqual(commands.normalize_params("generate_report", {})["report_type"], "periodic_summary")
