@@ -39,18 +39,140 @@ class MockAsrBackend:
 
 
 class SherpaAsrBackend:
-    """Real backend. Constructed on the RDK; verified on-board (Task 9), not in CI."""
+    """Real backend: sherpa-onnx KWS + VAD + offline SenseVoice over a sounddevice mic.
+
+    Modes: "kws" (idle wake-word spotting) | "dialog" (VAD-segmented full-sentence
+    recognition) | "off" (no inference). A sounddevice callback pushes 20ms float32
+    blocks onto a queue; poll() (called from the single node-timer thread — sherpa
+    inference is not thread-safe) drains the queue and returns at most one event.
+
+    Heavy deps (sherpa_onnx, sounddevice, numpy) import lazily so this module stays
+    importable on a dev box. On-board bring-up: see docs/architecture/voice_asr_setup.md.
+    Verified on the RDK (not in CI). The KWS result API (get_result vs .result) can
+    differ by sherpa-onnx version; adjust _poll_kws if the installed wheel differs.
+    """
 
     def __init__(self, cfg: Dict[str, Any]) -> None:
-        import sherpa_onnx  # noqa: F401  (lazy: only present on the board)
-        import sounddevice  # noqa: F401
+        import os
+        import queue
+
+        import sherpa_onnx
+        import sounddevice as sd
+
         self._cfg = cfg
-        # KeywordSpotter / VoiceActivityDetector / OfflineRecognizer wiring lives here;
-        # implemented against the installed models during on-board bring-up (Task 9).
-        raise NotImplementedError("SherpaAsrBackend wiring is completed during on-board bring-up")
+        self._sr = int(cfg.get("sample_rate", 16000))
+        self._device = cfg.get("mic_device") or None  # None = system default
+        nthreads = int(cfg.get("num_threads", 2))
+
+        # --- KWS: wake-word spotter ("小巡" / "巡检助手", from keywords_file) ---
+        kdir = cfg["kws_model_dir"]
+        self._kws = sherpa_onnx.KeywordSpotter(
+            sherpa_onnx.KeywordSpotterConfig(
+                keywords_file=cfg["kws_keywords_file"],
+                model=sherpa_onnx.KeywordSpotterModelConfig(
+                    encoder=os.path.join(kdir, "encoder.onnx"),
+                    decoder=os.path.join(kdir, "decoder.onnx"),
+                    joiner=os.path.join(kdir, "joiner.onnx"),
+                    tokens=os.path.join(kdir, "tokens.txt"),
+                    num_threads=nthreads,
+                ),
+            )
+        )
+        self._kws_stream = self._kws.create_stream()
+
+        # --- VAD: segments dialog speech into utterances ---
+        self._vad = sherpa_onnx.VoiceActivityDetector(
+            sherpa_onnx.VadModelConfig(
+                silero_vad=sherpa_onnx.SileroVadModelConfig(
+                    model=cfg["vad_model"],
+                    threshold=0.5,
+                    min_silence_duration=0.5,
+                    min_speech_duration=0.25,
+                ),
+                sample_rate=self._sr,
+            ),
+            buffer_size_in_seconds=30,
+        )
+
+        # --- Offline ASR: SenseVoice int8 full-sentence recognition ---
+        adir = cfg["asr_model_dir"]
+        model = os.path.join(adir, "model.int8.onnx")
+        if not os.path.exists(model):  # filename varies by release
+            import glob
+            cands = sorted(glob.glob(os.path.join(adir, "*.int8.onnx"))) or \
+                sorted(glob.glob(os.path.join(adir, "*.onnx")))
+            model = cands[0] if cands else model
+        self._recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
+            model=model,
+            tokens=os.path.join(adir, "tokens.txt"),
+            num_threads=nthreads,
+            use_itn=True,
+            language="zh",
+        )
+
+        # --- mic capture thread -> queue ---
+        self._queue: "queue.Queue" = queue.Queue()
+        self._mode = "off"
+
+        def _cb(indata, frames, time_info, status):  # pragma: no cover - board only
+            self._queue.put(indata[:, 0].copy())  # mono float32
+
+        self._stream = sd.InputStream(
+            device=self._device, samplerate=self._sr, channels=1,
+            dtype="float32", blocksize=int(self._sr * 0.02), callback=_cb,
+        )
+        self._stream.start()
 
     def set_mode(self, mode: str) -> None:  # pragma: no cover - board only
-        ...
+        self._mode = mode
+        if mode == "dialog":
+            self._vad.reset()
+            self._drain()  # drop the wake word's trailing audio so it isn't recognised
+        elif mode == "kws":
+            self._drain()
 
     def poll(self) -> Optional[Dict[str, Any]]:  # pragma: no cover - board only
-        ...
+        import numpy as np
+
+        chunks = self._drain()
+        if not chunks or self._mode == "off":
+            return None
+        audio = np.concatenate(chunks)
+        if self._mode == "kws":
+            return self._poll_kws(audio)
+        if self._mode == "dialog":
+            return self._poll_dialog(audio)
+        return None
+
+    def _poll_kws(self, audio) -> Optional[Dict[str, Any]]:  # pragma: no cover - board only
+        self._kws_stream.accept_waveform(self._sr, audio)
+        while self._kws.is_ready(self._kws_stream):
+            self._kws.decode_stream(self._kws_stream)
+        keyword = self._kws.get_result(self._kws_stream)
+        if keyword:
+            self._kws_stream = self._kws.create_stream()  # reset for the next wake
+            return wake_event()
+        return None
+
+    def _poll_dialog(self, audio) -> Optional[Dict[str, Any]]:  # pragma: no cover - board only
+        self._vad.accept_waveform(audio)
+        while not self._vad.empty():
+            segment = self._vad.front()
+            self._vad.pop()
+            stream = self._recognizer.create_stream()
+            stream.accept_waveform(self._sr, segment.samples)
+            self._recognizer.decode_stream(stream)
+            text = (stream.result.text or "").strip()
+            if text:
+                return utterance_event(text)
+        return None
+
+    def _drain(self) -> list:  # pragma: no cover - board only
+        import queue
+        chunks = []
+        while True:
+            try:
+                chunks.append(self._queue.get_nowait())
+            except queue.Empty:
+                break
+        return chunks
