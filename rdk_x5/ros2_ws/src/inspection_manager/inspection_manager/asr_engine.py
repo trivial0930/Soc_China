@@ -74,6 +74,7 @@ class SherpaAsrBackend:
         import os
         import queue
 
+        import numpy as np
         import sherpa_onnx
         import sounddevice as sd
 
@@ -124,16 +125,45 @@ class SherpaAsrBackend:
         )
 
         # --- mic capture thread -> queue ---
+        # Many USB mics only do 48kHz, not the model's 16kHz. Open at the model rate
+        # if the device supports it, else fall back to the device's native rate and
+        # resample each block to 16kHz in poll() (verified on-board with a 48k USB mic).
         self._queue: "queue.Queue" = queue.Queue()
         self._mode = "off"
+        self._cap_sr = self._sr
+
+        self._xruns = 0
 
         def _cb(indata, frames, time_info, status):  # pragma: no cover - board only
+            if status:  # input overflow (xrun): the callback was starved (e.g. GIL held
+                self._xruns += 1   # by KWS/ASR inference) -> dropped audio breaks streaming
             self._queue.put(indata[:, 0].copy())  # mono float32
 
-        self._stream = sd.InputStream(
-            device=self._device, samplerate=self._sr, channels=1,
-            dtype="float32", blocksize=int(self._sr * 0.02), callback=_cb,
-        )
+        def _open(rate):
+            # latency="high" gives PortAudio a large ALSA buffer so brief GIL stalls
+            # during inference don't overflow and drop frames (which wrecks recognition).
+            return sd.InputStream(device=self._device, samplerate=rate, channels=1,
+                                  dtype="float32", blocksize=int(rate * 0.03),
+                                  latency="high", callback=_cb)
+
+        try:
+            self._stream = _open(self._sr)
+        except Exception:  # noqa: BLE001 - device rejects 16kHz -> use native rate + resample
+            info = sd.query_devices(self._device, "input")
+            self._cap_sr = int(info.get("default_samplerate") or 48000)
+            self._stream = _open(self._cap_sr)
+        # Stateful, continuous anti-aliased decimation (like ALSA's plug layer). A
+        # per-chunk resample_poly redesigns a heavy FIR every 50ms — too slow on the
+        # A55s, so the queue backs up (high latency) and feeds the models stale/edge-
+        # glitched audio (poor recognition). A persistent low-order SOS + integer
+        # decimation is cheap and artifact-free across chunk boundaries.
+        if self._cap_sr != self._sr:
+            from scipy.signal import butter, sosfilt_zi
+            self._decim = max(1, round(self._cap_sr / self._sr))
+            self._aa_sos = butter(8, 0.9 * self._sr / 2, "low", fs=self._cap_sr, output="sos")
+            self._aa_zi = sosfilt_zi(self._aa_sos)
+            self._aa_primed = False
+            self._decim_rem = np.zeros(0, dtype="float32")
         self._stream.start()
 
     def set_mode(self, mode: str) -> None:  # pragma: no cover - board only
@@ -151,6 +181,8 @@ class SherpaAsrBackend:
         if not chunks or self._mode == "off":
             return None
         audio = np.concatenate(chunks)
+        if self._cap_sr != self._sr:
+            audio = self._resample(audio)
         if self._mode == "kws":
             return self._poll_kws(audio)
         if self._mode == "dialog":
@@ -172,7 +204,7 @@ class SherpaAsrBackend:
     def _poll_dialog(self, audio) -> Optional[Dict[str, Any]]:  # pragma: no cover - board only
         self._vad.accept_waveform(audio)
         while not self._vad.empty():
-            segment = self._vad.front()
+            segment = self._vad.front  # 1.13.3: front is a property, not a method
             self._vad.pop()
             stream = self._recognizer.create_stream()
             stream.accept_waveform(self._sr, segment.samples)
@@ -181,6 +213,18 @@ class SherpaAsrBackend:
             if text:
                 return utterance_event(text)
         return None
+
+    def _resample(self, audio):  # pragma: no cover - board only
+        import numpy as np
+        from scipy.signal import sosfilt
+        if not self._aa_primed:                      # warm the filter to the DC level
+            self._aa_zi = self._aa_zi * float(audio[0])
+            self._aa_primed = True
+        filt, self._aa_zi = sosfilt(self._aa_sos, audio, zi=self._aa_zi)
+        buf = np.concatenate([self._decim_rem, filt])
+        n = (len(buf) // self._decim) * self._decim   # keep decimation phase continuous
+        self._decim_rem = buf[n:]
+        return buf[0:n:self._decim].astype("float32")
 
     def _drain(self) -> list:  # pragma: no cover - board only
         import queue

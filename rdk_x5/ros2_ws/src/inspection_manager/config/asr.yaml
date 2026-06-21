@@ -1,9 +1,10 @@
 asr_node:
   ros__parameters:
     enabled: true
-    mic_device: "ES8326"        # on-board codec capture (hw:1,0); USB hw:0,0 is output-only
+    mic_device: "USB Composite Device"   # USB mic (hw:2,0, 48kHz-only -> resampled to 16k)
     sample_rate: 16000
     num_threads: 2
+    kws_threshold: 0.10           # 唤醒灵敏度(越小越易触发);默认0.25偏钝
     kws_model_dir: "/root/sherpa/sherpa-onnx-kws-zipformer-wenetspeech"
     kws_keywords_file: "/root/sherpa/keywords.txt"
     vad_model: "/root/sherpa/silero_vad.onnx"
