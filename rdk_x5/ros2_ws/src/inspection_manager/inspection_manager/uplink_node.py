@@ -37,11 +37,16 @@ class UplinkNode(Node):
         p("acceptance_topic", "/inspection/acceptance")
         p("flush_sec", 5.0)
         p("max_attempts", 5)
+        p("max_len", 2000)
 
         gp = self.get_parameter
         self.upload_images = bool(gp("upload_images").value)
         self.poster = HttpPoster(str(gp("backend_url").value), str(gp("ingest_token").value))
-        self.queue = RetryQueue(max_attempts=int(gp("max_attempts").value))
+        self.queue = RetryQueue(
+            max_attempts=int(gp("max_attempts").value),
+            max_len=int(gp("max_len").value),
+            persistent_kinds=frozenset({"event", "brief"}),
+        )
 
         self.create_subscription(String, str(gp("hazard_topic").value), self._on_event, 10)
         self.create_subscription(String, str(gp("brief_topic").value), self._on_brief, 10)
@@ -72,7 +77,9 @@ class UplinkNode(Node):
     def _enqueue(self, kind: str, body: dict, images=None) -> None:
         self._upload(images or [])
         if not self._send(kind, body):
-            self.queue.add(kind, body)
+            if self.queue.add(kind, body):
+                self.get_logger().warn(
+                    f"uplink queue full (max_len), dropped oldest to enqueue {kind}")
 
     # ---- subscriptions ----
     def _parse(self, msg: String):
