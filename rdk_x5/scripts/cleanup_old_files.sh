@@ -10,7 +10,7 @@
 #                             目录已建,JSONL 尚未积累超 30 天文件)
 #   /root/inspection_reports — report_service 写 *_<ts>.md(同上)
 #   /root/workstation_records — workstation_record_node 写 workstation_log.jsonl
-#   /root/Soc_China/logs    — uart_test frames.jsonl(find 确认 104 个 jsonl,实际存在)
+#   (/root/Soc_China/logs 的 uart_test frames.jsonl 按用户决策暂保留,不纳入清理)
 #
 # 不纳入(绝不触碰):模型 /root/sherpa /root/l15、配置 /root/Soc_China/rdk_x5/ros2_ws、
 #   标定 gimbal.yaml、源码 /root/Soc_China/{rdk_x5,shared,stm32,app}
@@ -25,7 +25,6 @@ DIRS=(
   /root/inspection_log         # cognition_node inspection.jsonl
   /root/inspection_reports     # report_service *.md
   /root/workstation_records    # workstation_record_node workstation_log.jsonl
-  /root/Soc_China/logs         # uart_test frames.jsonl 及其他测试日志
 )
 
 PATTERNS=( "*.log" "*.jsonl" "*.md" )
