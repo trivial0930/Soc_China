@@ -173,11 +173,13 @@ class SherpaAsrBackend:
         # glitched audio (poor recognition). A persistent low-order SOS + integer
         # decimation is cheap and artifact-free across chunk boundaries.
         if self._cap_sr != self._sr:
-            from scipy.signal import butter, sosfilt_zi
+            from scipy.signal import firwin
             self._decim = max(1, round(self._cap_sr / self._sr))
-            self._aa_sos = butter(8, 0.9 * self._sr / 2, "low", fs=self._cap_sr, output="sos")
-            self._aa_zi = sosfilt_zi(self._aa_sos)
-            self._aa_primed = False
+            # FIR anti-alias (not IIR): a finite input can never produce inf/nan through
+            # an FIR (it's a bounded weighted sum), so a transient audio glitch can't
+            # poison the stream. lfilter carries state for gap-free continuity.
+            self._fir_b = firwin(64, 0.9 * self._sr / 2, fs=self._cap_sr).astype("float64")
+            self._fir_zi = np.zeros(len(self._fir_b) - 1, dtype="float64")
             self._decim_rem = np.zeros(0, dtype="float32")
         self._stream.start()
 
@@ -190,9 +192,20 @@ class SherpaAsrBackend:
             self._drain()
 
     def poll(self) -> Optional[Dict[str, Any]]:  # pragma: no cover - board only
+        import os
+        import time
+
         import numpy as np
 
         chunks = self._drain()
+        # Anti-echo (half-duplex): the TTS daemon touches /tmp/tts_playing only while it's
+        # actually playing on the speaker. Mute the mic during playback (+ a short tail for
+        # echo decay) so we don't recognise our own voice — but no longer, so the user's
+        # command right after the prompt isn't dropped.
+        if os.path.exists("/tmp/tts_playing"):
+            self._mute_until = time.monotonic() + 0.4
+        if time.monotonic() < getattr(self, "_mute_until", 0.0):
+            return None
         if not chunks or self._mode == "off":
             return None
         audio = np.concatenate(chunks)
@@ -225,26 +238,23 @@ class SherpaAsrBackend:
             stream = self._recognizer.create_stream()
             # segment.samples is a Python list; accept_waveform silently yields an empty
             # transcript unless it's a float32 numpy array (on-board: '' vs correct text).
-            samples = np.asarray(segment.samples, dtype="float32")
+            samples = np.nan_to_num(np.asarray(segment.samples, dtype="float32"),
+                                    nan=0.0, posinf=0.0, neginf=0.0)
             stream.accept_waveform(self._sr, samples)
             self._recognizer.decode_stream(stream)
             text = (stream.result.text or "").strip()
             import sys
-            _rms = float(np.sqrt(np.mean(samples ** 2))) if len(samples) else 0.0
-            print(f"[asr] seg len={len(samples)} ({len(samples)/self._sr:.2f}s) rms={_rms:.3f} heard={text!r}",
-                  file=sys.stderr, flush=True)
+            print(f"[asr] heard {text!r}", file=sys.stderr, flush=True)  # on-board ops log
             if text:
                 return utterance_event(text)
         return None
 
     def _resample(self, audio):  # pragma: no cover - board only
         import numpy as np
-        from scipy.signal import sosfilt
-        if not self._aa_primed:                      # warm the filter to the DC level
-            self._aa_zi = self._aa_zi * float(audio[0])
-            self._aa_primed = True
-        filt, self._aa_zi = sosfilt(self._aa_sos, audio, zi=self._aa_zi)
-        buf = np.concatenate([self._decim_rem, filt])
+        from scipy.signal import lfilter
+        audio = np.nan_to_num(np.asarray(audio, dtype="float64"), nan=0.0, posinf=0.0, neginf=0.0)
+        filt, self._fir_zi = lfilter(self._fir_b, [1.0], audio, zi=self._fir_zi)
+        buf = np.concatenate([self._decim_rem, filt.astype("float32")])
         n = (len(buf) // self._decim) * self._decim   # keep decimation phase continuous
         self._decim_rem = buf[n:]
         return buf[0:n:self._decim].astype("float32")

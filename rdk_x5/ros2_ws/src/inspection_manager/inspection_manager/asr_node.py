@@ -63,7 +63,7 @@ class AsrNode(Node):
         gimbal_cfg = self._read_yaml(str(g("gimbal_aim_config").value))
         vlm_chat = self._make_vlm_chat() if bool(g("vlm_fallback_enabled").value) else None
 
-        backend = SherpaAsrBackend({
+        self._backend = backend = SherpaAsrBackend({
             "mic_device": str(g("mic_device").value), "sample_rate": int(g("sample_rate").value),
             "num_threads": int(g("num_threads").value), "kws_model_dir": str(g("kws_model_dir").value),
             "kws_keywords_file": str(g("kws_keywords_file").value), "vad_model": str(g("vad_model").value),
@@ -94,6 +94,9 @@ class AsrNode(Node):
             self._string_pubs[topic_key].publish(String(data=data))
 
     def _speak(self, text: str) -> None:
+        # Anti-echo is handled in the backend by watching the TTS daemon's /tmp/tts_playing
+        # flag (mutes the mic only while the speaker is actually playing), so the user's
+        # command right after the prompt isn't swallowed by a fixed-length mute.
         self._string_pubs["voice_topic"].publish(String(data=text))
 
     def _on_tick(self) -> None:
