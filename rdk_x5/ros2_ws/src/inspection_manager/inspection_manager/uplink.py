@@ -79,24 +79,35 @@ def read_markdown(path: str) -> str:
 
 # ---------------------------------------------------------------- retry queue
 class RetryQueue:
-    """Bounded FIFO of (kind, body) pending POSTs; drop after max_attempts."""
+    """Bounded FIFO of (kind, body) pending POSTs.
 
-    def __init__(self, max_attempts: int = 5, max_len: int = 500) -> None:
+    Non-persistent kinds drop after max_attempts. Kinds in persistent_kinds are
+    never dropped by attempt count (retried until sent) — only the max_len bound
+    can evict them (oldest first). add() returns True when it evicted the oldest.
+    """
+
+    def __init__(self, max_attempts: int = 5, max_len: int = 2000,
+                 persistent_kinds=frozenset()) -> None:
         self.max_attempts = max_attempts
         self.max_len = max_len
+        self.persistent_kinds = frozenset(persistent_kinds)
         self._q: List[Tuple[str, Dict[str, Any], int]] = []  # (kind, body, attempts)
 
     def __len__(self) -> int:
         return len(self._q)
 
-    def add(self, kind: str, body: Dict[str, Any]) -> None:
+    def add(self, kind: str, body: Dict[str, Any]) -> bool:
+        dropped_oldest = False
         if len(self._q) >= self.max_len:
-            self._q.pop(0)  # drop oldest
+            self._q.pop(0)
+            dropped_oldest = True
         self._q.append((kind, body, 0))
+        return dropped_oldest
 
     def drain(self, sender: Callable[[str, Dict[str, Any]], bool]) -> Dict[str, int]:
-        """Try to send each queued item; requeue failures (<max_attempts), drop the rest.
-        sender(kind, body) -> True on success. Returns {sent, requeued, dropped}."""
+        """Try to send each queued item; requeue failures, drop the rest.
+        Persistent kinds are always requeued on failure. sender(kind, body) -> True
+        on success. Returns {sent, requeued, dropped}."""
         pending = self._q
         self._q = []
         sent = requeued = dropped = 0
@@ -108,7 +119,7 @@ class RetryQueue:
                 ok = False
             if ok:
                 sent += 1
-            elif attempts + 1 < self.max_attempts:
+            elif kind in self.persistent_kinds or attempts + 1 < self.max_attempts:
                 self._q.append((kind, body, attempts + 1)); requeued += 1
             else:
                 dropped += 1
