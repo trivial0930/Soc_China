@@ -146,12 +146,27 @@ class SherpaAsrBackend:
                                   dtype="float32", blocksize=int(rate * 0.03),
                                   latency="high", callback=_cb)
 
-        try:
-            self._stream = _open(self._sr)
-        except Exception:  # noqa: BLE001 - device rejects 16kHz -> use native rate + resample
-            info = sd.query_devices(self._device, "input")
-            self._cap_sr = int(info.get("default_samplerate") or 48000)
-            self._stream = _open(self._cap_sr)
+        def _open_best():
+            try:
+                return _open(self._sr)
+            except Exception:  # device rejects 16kHz -> native rate + resample
+                info = sd.query_devices(self._device, "input")
+                self._cap_sr = int(info.get("default_samplerate") or 48000)
+                return _open(self._cap_sr)
+
+        # The USB mic disconnects/re-enumerates intermittently; don't crash the node if
+        # it's briefly absent at startup — wait for it to come back (up to ~60s).
+        import time
+        last_err = None
+        for _ in range(30):
+            try:
+                self._stream = _open_best()
+                break
+            except Exception as exc:  # noqa: BLE001
+                last_err = exc
+                time.sleep(2.0)
+        else:
+            raise RuntimeError(f"mic '{self._device}' unavailable after retries: {last_err}")
         # Stateful, continuous anti-aliased decimation (like ALSA's plug layer). A
         # per-chunk resample_poly redesigns a heavy FIR every 50ms — too slow on the
         # A55s, so the queue backs up (high latency) and feeds the models stale/edge-
@@ -202,14 +217,22 @@ class SherpaAsrBackend:
         return None
 
     def _poll_dialog(self, audio) -> Optional[Dict[str, Any]]:  # pragma: no cover - board only
+        import numpy as np
         self._vad.accept_waveform(audio)
         while not self._vad.empty():
             segment = self._vad.front  # 1.13.3: front is a property, not a method
             self._vad.pop()
             stream = self._recognizer.create_stream()
-            stream.accept_waveform(self._sr, segment.samples)
+            # segment.samples is a Python list; accept_waveform silently yields an empty
+            # transcript unless it's a float32 numpy array (on-board: '' vs correct text).
+            samples = np.asarray(segment.samples, dtype="float32")
+            stream.accept_waveform(self._sr, samples)
             self._recognizer.decode_stream(stream)
             text = (stream.result.text or "").strip()
+            import sys
+            _rms = float(np.sqrt(np.mean(samples ** 2))) if len(samples) else 0.0
+            print(f"[asr] seg len={len(samples)} ({len(samples)/self._sr:.2f}s) rms={_rms:.3f} heard={text!r}",
+                  file=sys.stderr, flush=True)
             if text:
                 return utterance_event(text)
         return None
