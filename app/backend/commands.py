@@ -60,6 +60,14 @@ def _v_voice_control(p: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _v_set_volume(p: Dict[str, Any]) -> Optional[str]:
+    # level is an int percentage 0-100 (0=mute, 100=loudest). Reject bool (True is an int).
+    level = p.get("level")
+    if isinstance(level, bool) or not isinstance(level, int) or not (0 <= level <= 100):
+        return "set_volume 需要整数 params.level (0-100)"
+    return None
+
+
 # type -> validator(params) -> error string or None
 COMMAND_VALIDATORS = {
     "inspection_round": _v_inspection_round,
@@ -70,6 +78,7 @@ COMMAND_VALIDATORS = {
     "laser_point": _v_laser_point,
     "generate_report": _v_generate_report,
     "voice_control": _v_voice_control,
+    "set_volume": _v_set_volume,
 }
 COMMAND_TYPES = frozenset(COMMAND_VALIDATORS)
 

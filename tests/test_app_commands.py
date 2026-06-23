@@ -41,6 +41,14 @@ class ValidateCommandTests(unittest.TestCase):
         self.assertIsNone(commands.validate_command("laser_point", {"location": "柜2/抽屉3"}))
         self.assertIsNotNone(commands.validate_command("laser_point", {}))
 
+    def test_set_volume_requires_int_0_100(self):
+        self.assertIsNone(commands.validate_command("set_volume", {"level": 0}))
+        self.assertIsNone(commands.validate_command("set_volume", {"level": 100}))
+        self.assertIsNone(commands.validate_command("set_volume", {"level": 60}))
+        for bad in ({}, {"level": -1}, {"level": 101}, {"level": 50.5}, {"level": "80"}, {"level": True}):
+            self.assertEqual(commands.validate_command("set_volume", bad),
+                             "set_volume 需要整数 params.level (0-100)")
+
     def test_voice_control_requires_bool_enabled(self):
         self.assertIsNone(commands.validate_command("voice_control", {"enabled": True}))
         self.assertIsNone(commands.validate_command("voice_control", {"enabled": False}))

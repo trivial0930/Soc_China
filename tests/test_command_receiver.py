@@ -99,6 +99,14 @@ class DispatchTests(unittest.TestCase):
         self.assertIn("unsupported", dispatch_command({"type": "voice_control", "params": {}}))
         self.assertIn("unsupported", dispatch_command({"type": "voice_control", "params": {"enabled": "yes"}}))
 
+    def test_set_volume_returns_level(self):
+        out = dispatch_command({"type": "set_volume", "params": {"level": 60}})
+        self.assertEqual(out["set_volume"], 60)
+        self.assertEqual(out["result"], "播报音量已设为 60")
+        self.assertNotIn("unsupported", out)
+        self.assertIn("unsupported", dispatch_command({"type": "set_volume", "params": {"level": 150}}))
+        self.assertIn("unsupported", dispatch_command({"type": "set_volume", "params": {}}))
+
     def test_unknown_type_reported(self):
         self.assertIn("unsupported", dispatch_command({"type": "teleport", "params": {}}, STATIONS))
 

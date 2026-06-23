@@ -106,6 +106,17 @@ def dispatch_command(cmd: Dict[str, Any], stations_cfg: Optional[Dict[str, Any]]
                              "data": json.dumps({"enabled": enabled}, ensure_ascii=False)}],
                 "result": "语音监听已开启" if enabled else "语音监听已关闭"}
 
+    if ctype == "set_volume":
+        # TTS playback volume 0-100 (the USB speaker has no ALSA volume control, so the
+        # node persists the level to a file the TTS daemon reads + applies as gain).
+        try:
+            level = int(params.get("level"))
+        except (TypeError, ValueError):
+            level = -1
+        if not 0 <= level <= 100:
+            return {"unsupported": "set_volume 需要整数 level (0-100)"}
+        return {"set_volume": level, "result": f"播报音量已设为 {level}"}
+
     return {"unsupported": f"机器人侧暂未接入命令类型:{ctype}"}
 
 

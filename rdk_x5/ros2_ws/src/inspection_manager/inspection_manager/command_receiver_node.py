@@ -12,6 +12,7 @@ to recheck/laser). Backend address/token default to the uplink node's params.
 
 from __future__ import annotations
 
+import os
 from urllib.parse import quote
 
 import rclpy
@@ -43,6 +44,7 @@ class CommandReceiverNode(Node):
         gp("laser_indicate_sec", 8.0)   # sustain aim + laser this long for one laser_point
         gp("acceptance_request_topic", "/inspection/acceptance_request")
         gp("voice_control_topic", "/inspection/voice_control")
+        gp("tts_volume_file", "/root/.tts_volume")   # set_volume writes level here; TTS daemon reads it
 
         g = self.get_parameter
         self.poster = HttpPoster(str(g("backend_url").value), str(g("ingest_token").value))
@@ -50,6 +52,7 @@ class CommandReceiverNode(Node):
         self.stations_cfg = self._read_yaml(str(g("stations_config").value))
         self.gimbal_cfg = self._read_yaml(str(g("gimbal_aim_config").value))
         self.laser_indicate_sec = float(g("laser_indicate_sec").value)
+        self._tts_volume_file = os.path.expanduser(str(g("tts_volume_file").value))
         self.string_pubs = {
             "voice_topic": self.create_publisher(String, str(g("voice_topic").value), 10),
             "recheck_topic": self.create_publisher(String, str(g("recheck_topic").value), 10),
@@ -67,7 +70,7 @@ class CommandReceiverNode(Node):
         # NB: not self.executor — rclpy.Node.executor is a reserved property (its
         # setter calls add_node), so a plain attr name would collide and crash on init.
         self._cmd_executor = CommandExecutor(self._publish_primitive, self.create_timer,
-                                             self.laser_indicate_sec)
+                                             self.laser_indicate_sec, set_volume=self._set_tts_volume)
         self.create_timer(float(g("poll_sec").value), self._poll)
         self.get_logger().info(f"command_receiver_node up -> {self.poster.base}")
 
@@ -138,6 +141,15 @@ class CommandReceiverNode(Node):
         except Exception as exc:  # noqa: BLE001
             self.get_logger().warn(f"dispatch {cid} failed: {exc}")
             self._report(cid, "failed", f"机器人执行异常:{exc}")
+
+    def _set_tts_volume(self, level: int) -> None:
+        """Persist the TTS playback volume (0-100); the TTS daemon reads this file."""
+        level = max(0, min(100, int(level)))
+        try:
+            with open(self._tts_volume_file, "w", encoding="utf-8") as fh:
+                fh.write(str(level))
+        except OSError as exc:  # noqa: BLE001
+            self.get_logger().warn(f"set tts volume failed: {exc}")
 
     def _publish_primitive(self, topic_key: str, kind: str, data) -> None:
         if kind == "vector3":

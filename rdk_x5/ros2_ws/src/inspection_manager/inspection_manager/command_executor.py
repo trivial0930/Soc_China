@@ -13,10 +13,12 @@ from typing import Any, Callable, Dict, List, Optional
 class CommandExecutor:
     def __init__(self, publish: Callable[[str, str, Any], None],
                  schedule: Callable[[float, Callable[[], None]], Any],
-                 laser_indicate_sec: float = 8.0) -> None:
+                 laser_indicate_sec: float = 8.0,
+                 set_volume: Optional[Callable[[int], None]] = None) -> None:
         self._publish = publish
         self._schedule = schedule
         self._laser_sec = float(laser_indicate_sec)
+        self._set_volume = set_volume  # int level 0-100 -> persist TTS playback volume
         self._aim_target: Optional[List[float]] = None
         self._sustain_timer = None
         self._stop_timer = None
@@ -24,6 +26,9 @@ class CommandExecutor:
     def execute(self, plan: Dict[str, Any]) -> Optional[str]:
         if "laser_aim" in plan:
             self._start_laser(plan["laser_aim"])
+        elif "set_volume" in plan:
+            if self._set_volume is not None:
+                self._set_volume(int(plan["set_volume"]))
         elif "actions" in plan:
             for act in plan["actions"]:
                 self._publish(act["topic_key"], act["kind"], act["data"])
