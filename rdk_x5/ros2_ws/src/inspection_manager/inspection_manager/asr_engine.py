@@ -198,15 +198,13 @@ class SherpaAsrBackend:
         if not _should_retry_mic(self._last_mic_try, now, MIC_RETRY_INTERVAL_S):
             return
         self._last_mic_try = now
-        # PortAudio enumerates devices once at init; a mic plugged in AFTER asr started
-        # won't appear until we re-enumerate. Re-init here (safe: no stream is open) so
-        # _open_mic can see the freshly plugged-in mic.
-        try:
-            import sounddevice as sd
-            sd._terminate()
-            sd._initialize()
-        except Exception:  # noqa: BLE001 - best-effort refresh; _open_mic reports real failure
-            pass
+        # NOTE: no PortAudio re-init here. _terminate()/_initialize() did refresh the
+        # device list (so a mic plugged in after start became visible), but the stream
+        # opened right after a re-init was unstable on the board at boot (ALSA AlsaStart
+        # failed at runtime -> capture died, no recovery). Instead, start_asr.sh waits
+        # for the USB mic to enumerate BEFORE launching asr, so __init__ opens it on the
+        # stable path. This retry only covers a transient first-open failure when the mic
+        # is already enumerated.
         if self._open_mic():
             print(f"[asr_engine] mic opened (sr={self._cap_sr})", flush=True)
             self._mic_waiting_logged = False
