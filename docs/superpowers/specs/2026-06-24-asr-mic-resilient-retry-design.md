@@ -73,3 +73,7 @@ def _ensure_mic(self):
 - 日志必须限流,否则麦长期不在会刷屏 `/tmp/asr.log`。
 - 不改 `asr.yaml`、不改 `asr_node.py`(node 生命周期不变,backend 内部自愈)。
 - 本设计依赖"仅启动场景";运行中掉线恢复留作后续(非目标)。
+
+## 7. 实现中发现:PortAudio 设备缓存(关键,已修)
+
+初版只重试 `_open_mic` **无法看到热插的麦**:`sounddevice`/PortAudio 在 init 时枚举一次设备,asr 启动时麦不在则缓存里没有它,麦后插上 PortAudio 不会自动重新枚举,`_open_mic` 按名字永远找不到(`No input device matching`)。这是初版 plan/spec 漏掉的点(上板拔插测时暴露)。**修复**:`_ensure_mic` 每次重试前先 `sd._terminate(); sd._initialize()` 重新枚举(此时无 stream 打开,安全),`_open_mic` 即可看到新插入的麦。上板决定性验证:拔麦起 asr(不崩)→插麦→自动 `mic opened (sr=48000)` + 持有 `pcmC2D0c` + 说"小巡"正常唤醒。
