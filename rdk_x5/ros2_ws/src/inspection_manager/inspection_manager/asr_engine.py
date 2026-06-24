@@ -82,9 +82,7 @@ class SherpaAsrBackend:
         import os
         import queue
 
-        import numpy as np
         import sherpa_onnx
-        import sounddevice as sd
 
         self._cfg = cfg
         self._sr = int(cfg.get("sample_rate", 16000))
