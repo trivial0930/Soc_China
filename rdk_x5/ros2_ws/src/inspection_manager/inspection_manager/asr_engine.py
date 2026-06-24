@@ -200,6 +200,15 @@ class SherpaAsrBackend:
         if not _should_retry_mic(self._last_mic_try, now, MIC_RETRY_INTERVAL_S):
             return
         self._last_mic_try = now
+        # PortAudio enumerates devices once at init; a mic plugged in AFTER asr started
+        # won't appear until we re-enumerate. Re-init here (safe: no stream is open) so
+        # _open_mic can see the freshly plugged-in mic.
+        try:
+            import sounddevice as sd
+            sd._terminate()
+            sd._initialize()
+        except Exception:  # noqa: BLE001 - best-effort refresh; _open_mic reports real failure
+            pass
         if self._open_mic():
             print(f"[asr_engine] mic opened (sr={self._cap_sr})", flush=True)
             self._mic_waiting_logged = False
