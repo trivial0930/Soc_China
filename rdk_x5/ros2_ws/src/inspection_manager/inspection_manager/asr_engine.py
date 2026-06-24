@@ -31,6 +31,9 @@ def _should_retry_mic(last_try: float, now: float, interval: float) -> bool:
     return now - last_try >= interval
 
 
+MIC_RETRY_INTERVAL_S = 3.0
+
+
 def _resolve_onnx(model_dir: str, prefix: str) -> str:
     """Resolve <prefix>.onnx, else the preferred epoch-tagged file in a model dir.
 
@@ -136,57 +139,73 @@ class SherpaAsrBackend:
         self._queue: "queue.Queue" = queue.Queue()
         self._mode = "off"
         self._cap_sr = self._sr
-
         self._xruns = 0
+        self._stream = None
+        self._last_mic_try = 0.0   # monotonic; throttle via _should_retry_mic
+        self._mic_waiting_logged = False
+        # The USB mic disconnects/re-enumerates intermittently. Try once now; if it's
+        # not present, DON'T crash — poll() retries every MIC_RETRY_INTERVAL_S and the
+        # node keeps running (still responds to /inspection/voice_control).
+        if not self._open_mic():
+            print(f"[asr_engine] mic '{self._device}' not ready at startup; "
+                  f"will retry in poll() every {MIC_RETRY_INTERVAL_S}s", flush=True)
 
-        def _cb(indata, frames, time_info, status):  # pragma: no cover - board only
-            if status:  # input overflow (xrun): the callback was starved (e.g. GIL held
-                self._xruns += 1   # by KWS/ASR inference) -> dropped audio breaks streaming
-            self._queue.put(indata[:, 0].copy())  # mono float32
+    def _audio_cb(self, indata, frames, time_info, status):  # pragma: no cover - board only
+        if status:  # input overflow (xrun): callback starved (e.g. GIL held by inference)
+            self._xruns += 1
+        self._queue.put(indata[:, 0].copy())  # mono float32
+
+    def _open_mic(self) -> bool:  # pragma: no cover - board only
+        """Open the mic stream (16k, else native rate + resample). Configure FIR and
+        start the stream. Returns True on success; on failure leaves _stream=None."""
+        import numpy as np
+        import sounddevice as sd
 
         def _open(rate):
-            # latency="high" gives PortAudio a large ALSA buffer so brief GIL stalls
-            # during inference don't overflow and drop frames (which wrecks recognition).
+            # latency="high": large ALSA buffer so brief GIL stalls during inference
+            # don't overflow/drop frames (which wrecks recognition).
             return sd.InputStream(device=self._device, samplerate=rate, channels=1,
                                   dtype="float32", blocksize=int(rate * 0.03),
-                                  latency="high", callback=_cb)
-
-        def _open_best():
+                                  latency="high", callback=self._audio_cb)
+        try:
             try:
-                return _open(self._sr)
+                stream = _open(self._sr)
+                self._cap_sr = self._sr
             except Exception:  # device rejects 16kHz -> native rate + resample
                 info = sd.query_devices(self._device, "input")
                 self._cap_sr = int(info.get("default_samplerate") or 48000)
-                return _open(self._cap_sr)
-
-        # The USB mic disconnects/re-enumerates intermittently; don't crash the node if
-        # it's briefly absent at startup — wait for it to come back (up to ~60s).
-        import time
-        last_err = None
-        for _ in range(30):
-            try:
-                self._stream = _open_best()
-                break
-            except Exception as exc:  # noqa: BLE001
-                last_err = exc
-                time.sleep(2.0)
-        else:
-            raise RuntimeError(f"mic '{self._device}' unavailable after retries: {last_err}")
-        # Stateful, continuous anti-aliased decimation (like ALSA's plug layer). A
-        # per-chunk resample_poly redesigns a heavy FIR every 50ms — too slow on the
-        # A55s, so the queue backs up (high latency) and feeds the models stale/edge-
-        # glitched audio (poor recognition). A persistent low-order SOS + integer
-        # decimation is cheap and artifact-free across chunk boundaries.
+                stream = _open(self._cap_sr)
+        except Exception:  # noqa: BLE001 - mic absent/unavailable
+            return False
+        # Stateful anti-aliased decimation (FIR, not IIR: a finite input can't produce
+        # inf/nan through a bounded weighted sum, so a transient glitch can't poison the
+        # stream; lfilter carries state for gap-free continuity).
         if self._cap_sr != self._sr:
             from scipy.signal import firwin
             self._decim = max(1, round(self._cap_sr / self._sr))
-            # FIR anti-alias (not IIR): a finite input can never produce inf/nan through
-            # an FIR (it's a bounded weighted sum), so a transient audio glitch can't
-            # poison the stream. lfilter carries state for gap-free continuity.
             self._fir_b = firwin(64, 0.9 * self._sr / 2, fs=self._cap_sr).astype("float64")
             self._fir_zi = np.zeros(len(self._fir_b) - 1, dtype="float64")
             self._decim_rem = np.zeros(0, dtype="float32")
-        self._stream.start()
+        stream.start()
+        self._stream = stream
+        return True
+
+    def _ensure_mic(self) -> None:  # pragma: no cover - board only
+        """If the mic isn't open, retry opening it (throttled). Auto-recovers when the
+        user plugs the mic back in."""
+        import time
+        if self._stream is not None:
+            return
+        now = time.monotonic()
+        if not _should_retry_mic(self._last_mic_try, now, MIC_RETRY_INTERVAL_S):
+            return
+        self._last_mic_try = now
+        if self._open_mic():
+            print(f"[asr_engine] mic opened (sr={self._cap_sr})", flush=True)
+            self._mic_waiting_logged = False
+        elif not self._mic_waiting_logged:
+            print("[asr_engine] still waiting for mic...", flush=True)
+            self._mic_waiting_logged = True  # log once per outage, don't spam
 
     def set_mode(self, mode: str) -> None:  # pragma: no cover - board only
         self._mode = mode
@@ -202,6 +221,9 @@ class SherpaAsrBackend:
 
         import numpy as np
 
+        self._ensure_mic()
+        if self._stream is None:
+            return None
         chunks = self._drain()
         # Anti-echo (half-duplex): the TTS daemon touches /tmp/tts_playing only while it's
         # actually playing on the speaker. Mute the mic during playback (+ a short tail for
