@@ -26,6 +26,11 @@ def utterance_event(text: str) -> Dict[str, Any]:
     return {"kind": "utterance", "text": text}
 
 
+def _should_retry_mic(last_try: float, now: float, interval: float) -> bool:
+    """True if enough time elapsed since last_try to retry opening the mic."""
+    return now - last_try >= interval
+
+
 def _resolve_onnx(model_dir: str, prefix: str) -> str:
     """Resolve <prefix>.onnx, else the preferred epoch-tagged file in a model dir.
 
