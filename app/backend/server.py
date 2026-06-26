@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -21,10 +22,12 @@ from app.backend import commands as commands_mod
 from app.backend import config, images, ingest
 from app.backend import push as push_mod
 from app.backend import store as store_mod
+from app.backend import teleop as teleop_mod
 
 config.ensure_dirs()
 STORE = store_mod.Store(config.DB_PATH)
 BROKER = push_mod.Broker()
+TELEOP = teleop_mod.TeleopStore()  # latest-only low-latency drive channel (in-memory)
 
 
 async def _retention_sweep() -> None:
@@ -210,6 +213,34 @@ def robot_result(command_id: str, body: dict, _=Depends(require_token)):
         raise HTTPException(404, "command not found")
     BROKER.publish("command", {"type": "command", "payload": c})
     return c
+
+
+# ---------------------------------------------------------- teleop (low-latency drive)
+# Separate from the 2s command queue: latest-only velocity (App->robot, 10Hz pull) +
+# lidar safety state (robot->App). In-memory, overwrite-on-write; see teleop.py.
+@app.post("/api/robot/teleop")
+def teleop_set(body: dict, _=Depends(require_token)):
+    TELEOP.set_velocity(teleop_mod.to_float(body.get("vx")), teleop_mod.to_float(body.get("vy")),
+                        teleop_mod.to_float(body.get("wz")), now=time.monotonic())
+    return {"ok": True}
+
+
+@app.get("/api/robot/teleop")
+def teleop_get():
+    return TELEOP.get_velocity(now=time.monotonic())
+
+
+@app.post("/api/robot/teleop/status")
+def teleop_set_status(body: dict, _=Depends(require_token)):
+    front = body.get("front_dist_m")
+    TELEOP.set_status(str(body.get("state", "unknown")),
+                      None if front is None else teleop_mod.to_float(front), now=time.monotonic())
+    return {"ok": True}
+
+
+@app.get("/api/robot/teleop/status")
+def teleop_get_status():
+    return TELEOP.get_status(now=time.monotonic())
 
 
 # --------------------------------------------------------------------- images
