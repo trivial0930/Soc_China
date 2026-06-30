@@ -1,9 +1,9 @@
 # 实验室一键建图操作手册（B1）
 
 适用:RDK X5（`root@192.168.128.10`）+ STM32 USB CDC 底盘 + 雷神 N10 雷达 + BMI088 IMU。
-方式:**方式一（RDK 端一条 launch 起整套）**，App 只当遥控手柄用，不在 App 里做"建图按钮"。
+方式:**App「建图模式」开关一键就绪**(主流程);RDK 端手动 launch 作为高级/备用。
 
-> 一句话流程:**到实验室 → 一条 launch 起栈 → App 摇杆慢速绕一圈（回到起点闭环）→ 一条命令存图**。
+> 一句话流程:**到实验室 → App 打开「建图模式」开关(自动腾资源+起栈)→ App 摇杆慢速绕一圈（回到起点闭环）→ App「存图」按钮 → 关开关恢复语音**。
 
 ---
 
@@ -12,26 +12,28 @@
 - 网络:Mac/手机与 RDK 同网，或走 Tailscale（Mac `100.114.38.16`）。SSH 抖动多半在 Mac↔RDK 网线 en7。
 - 仓库路径:RDK 上是 `/root/Soc_China`；Mac 上**用 `~/projects/Soc_China`**（Desktop 那份被 macOS TCC 拦 EPERM）。
 
-## 1. 起栈前先腾出 CPU（重要）
-开机自启的 **语音/认知/VLM 那套（asr / cognition / llama-server / gimbal）会和建图栈抢 CPU**（实测 gimbal_controller ~53%、llama-server 常驻）。建图不需要它们，先停掉，减少 EKF 滞后与 slam 丢扫描:
+## 1. 主流程:App 一键建图模式
+打开 App「建图模式」开关即可,RDK 自动:停语音/认知/VLM 那套(它们会和建图栈抢 CPU/内存,实测 gimbal ~53%、llama-server 占 ~3GB)→ 起整套建图栈。
 
+- 开关状态以 RDK 回报的真实 mode 为准:`normal`(正常)/`switching`(切换中,十几秒,禁开关)/`mapping`(建图中)/`mapping_error`(进建图失败,已停在安全态,可重试/退出)。
+- 进建图失败会**停在安全态、不自动回滚**:App 显示红色错误,点【退出】恢复语音或【重试】。
+- 实现:命令经现有命令队列(`set_mode`/`save_map`)→ RDK `command_receiver` 调 `mapping_mode_on.sh`/`off.sh`/`save_map.sh`;状态文件 `/root/.robot_mode`,经 uplink/command_receiver 上报。设计见 `docs/superpowers/specs/2026-06-30-app-mapping-mode-design.md`。
+
+> 关开关 = 拆建图栈 + 重拉语音栈。命令通道(uplink+command_receiver+acceptance)全程不停,所以建图中也始终能从 App 发"退出"。
+
+## 2.（备用/手动）RDK 端命令行起栈
+App 不可用时,SSH 上 RDK 手动起:
 ```bash
 ssh root@192.168.128.10
-systemctl stop voice-asr.service        # 停语音/认知/VLM/云台自启那一组
+systemctl stop voice-asr.service        # 停语音/认知/VLM/云台自启那一组(腾 CPU/内存)
 pkill -f llama-server 2>/dev/null        # 兜底:VLM 若残留再杀
-# 确认没有旧的 lslidar / 建图节点占着串口或话题:
-pkill -f lslidar_driver_node 2>/dev/null; pkill -f slam_toolbox 2>/dev/null
-```
-
-> 建图结束后想恢复语音:`systemctl start voice-asr.service`。
-
-## 2. 一键起建图栈
-```bash
+pkill -f lslidar_driver_node 2>/dev/null; pkill -f slam_toolbox 2>/dev/null   # 清旧建图节点
 source /opt/ros/humble/setup.bash
 source /root/Soc_China/rdk_x5/ros2_ws/install/setup.bash
-ros2 launch chassis_bringup mapping.launch.py \
-    ingest_token:=$(cat ~/.app_ingest_token)
+ros2 launch chassis_bringup mapping.launch.py ingest_token:=$(cat ~/.app_ingest_token)
 ```
+> 注意:`voice-asr.service` 是 KillMode=process + setsid,`systemctl stop` 杀不掉已起的节点,故上面要 `pkill`。建图结束恢复语音:`systemctl start voice-asr.service`(或直接用 App 关开关,走 `mapping_mode_off.sh` 更干净)。
+
 这一条会起:`lslidar_driver`(→/scan) + `bringup`(轮速里程计 + BMI088 IMU-EKF → odom→base_link + 静态 base_link→laser) + `slam_toolbox`(map→odom、/map) + `teleop_safety`(App 遥控 + 雷达反应式避障)。
 
 可选参数(一般用默认):
