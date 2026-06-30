@@ -1,10 +1,11 @@
 #!/bin/bash
 # 进建图模式:停重负载子集(保留命令通道三件)-> 起建图栈 -> 校验(<=30s)。
 # 成功 exit 0;失败自清建图栈并 exit 1。
-set -u
 export HOME=/root
+# 注意:ROS 的 setup.bash 引用未定义变量,必须在 set -u 之前 source
 source /opt/ros/humble/setup.bash
 source /root/Soc_China/rdk_x5/ros2_ws/install/setup.bash 2>/dev/null
+set -u
 
 # 1) 停重负载子集(绝不动 uplink/command_receiver/acceptance)
 for pat in llama-server tts_server.py voice_node report_service \
@@ -19,7 +20,8 @@ setsid ros2 launch chassis_bringup mapping.launch.py ingest_token:="$TOK" \
   >/tmp/mapping.log 2>&1 < /dev/null &
 
 # 3) 校验:关键节点是否都起来(用 node list,不信 topic hz)
-need="lslidar_driver_node async_slam_toolbox_node stm32_bridge_node ekf_node"
+# 注意:这里是 ROS 节点名(ros2 node list 输出),非 launch 动作名
+need="lslidar_driver_node slam_toolbox stm32_bridge ekf_filter_node"
 for i in $(seq 1 30); do
   sleep 1
   nodes=$(ros2 node list 2>/dev/null)

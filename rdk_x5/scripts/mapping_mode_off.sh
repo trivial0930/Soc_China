@@ -1,10 +1,11 @@
 #!/bin/bash
 # 退出建图模式:停建图栈(干净,含 setsid 孤儿)-> 重拉重负载层。
 # 全部恢复 exit 0;有组件没起来 exit 2。
-set -u
 export HOME=/root
+# 注意:ROS 的 setup.bash 引用未定义变量,必须在 set -u 之前 source
 source /opt/ros/humble/setup.bash
 source /root/Soc_China/rdk_x5/ros2_ws/install/setup.bash 2>/dev/null
+set -u
 
 # 1) 停建图栈(彻底清孤儿,释放 STM32 串口)
 for pat in "mapping.launch" lslidar_driver_node async_slam_toolbox_node \
