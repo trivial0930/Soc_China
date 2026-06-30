@@ -1,0 +1,29 @@
+lidar_safety:
+  ros__parameters:
+    scan_topic: /scan
+    teleop_topic: /cmd_vel_teleop
+    cmd_vel_topic: /cmd_vel
+    status_topic: /safety/status
+    control_hz: 20.0
+    cmd_timeout_s: 0.5          # deadman: stale /cmd_vel_teleop -> stop
+    sector_half_angle_deg: 35.0 # cone half-width checked in the travel direction
+    stop_dist_m: 0.30           # closer -> block translation (rotation still ok)
+    slow_dist_m: 0.60           # between stop and slow -> scale translation
+    v_eps: 0.02
+    range_min_m: 0.05
+    range_max_m: 12.0
+    # Near-field self masks [center_deg, half_deg, near_m, ...]: inside each cone,
+    # returns closer than near_m are the robot's own body (dropped); farther are
+    # still avoided. Rear within 30cm is all chassis (measured) -> [180,45,0.30].
+    near_masks: [180.0, 45.0, 0.30]
+
+teleop_receiver:
+  ros__parameters:
+    backend_url: "http://192.168.128.100:8000"
+    ingest_token: ""
+    teleop_topic: /cmd_vel_teleop
+    status_topic: /safety/status
+    poll_hz: 10.0
+    status_post_hz: 2.0
+    staleness_ms: 400.0         # backend setpoint older than this -> zero (deadman)
+    http_timeout_s: 0.3
