@@ -13,6 +13,9 @@ to recheck/laser). Backend address/token default to the uplink node's params.
 from __future__ import annotations
 
 import os
+import subprocess
+import threading
+import time
 from urllib.parse import quote
 
 import rclpy
@@ -22,6 +25,7 @@ from std_msgs.msg import Bool, String
 
 from inspection_manager.command_executor import CommandExecutor
 from inspection_manager.command_receiver import dispatch_command, find_item_to_command
+from inspection_manager.mode_switch import ModeController, read_mode
 from inspection_manager.uplink import HttpPoster
 
 
@@ -45,6 +49,10 @@ class CommandReceiverNode(Node):
         gp("acceptance_request_topic", "/inspection/acceptance_request")
         gp("voice_control_topic", "/inspection/voice_control")
         gp("tts_volume_file", "/root/.tts_volume")   # set_volume writes level here; TTS daemon reads it
+        gp("mode_state_file", "/root/.robot_mode")
+        gp("mode_lock_file", "/run/robot_mode.lock")
+        gp("scripts_dir", "/root/Soc_China/rdk_x5/scripts")
+        gp("mode_lock_timeout_sec", 90.0)
 
         g = self.get_parameter
         self.poster = HttpPoster(str(g("backend_url").value), str(g("ingest_token").value))
@@ -71,6 +79,19 @@ class CommandReceiverNode(Node):
         # setter calls add_node), so a plain attr name would collide and crash on init.
         self._cmd_executor = CommandExecutor(self._publish_primitive, self.create_timer,
                                              self.laser_indicate_sec, set_volume=self._set_tts_volume)
+        sd = str(g("scripts_dir").value)
+        self._mode_state_file = str(g("mode_state_file").value)
+        self._mode = ModeController(
+            run_script=self._run_script,
+            state_path=self._mode_state_file,
+            lock_path=str(g("mode_lock_file").value),
+            on_script=f"{sd}/mapping_mode_on.sh",
+            off_script=f"{sd}/mapping_mode_off.sh",
+            save_script=f"{sd}/save_map.sh",
+            now=time.monotonic,
+            lock_timeout_s=float(g("mode_lock_timeout_sec").value),
+        )
+        self._mode_thread = None
         self.create_timer(float(g("poll_sec").value), self._poll)
         self.get_logger().info(f"command_receiver_node up -> {self.poster.base}")
 
@@ -86,6 +107,26 @@ class CommandReceiverNode(Node):
         except Exception:  # noqa: BLE001 - optional config
             return {}
 
+    def _run_script(self, cmd: str) -> int:
+        """Run a shell command (mode scripts); return its exit code."""
+        try:
+            return subprocess.call(["/bin/bash", "-lc", cmd])
+        except OSError as exc:  # noqa: BLE001
+            self.get_logger().warn(f"run_script failed: {exc}")
+            return 127
+
+    def _run_mode_job(self, cid: str, fn, arg: str) -> None:
+        try:
+            res = fn(arg)
+            self.get_logger().info(f"{cid} mode -> {res}")
+            status = "done" if res["status"] in ("done", "noop", "warn") else "failed"
+            self._report(cid, status, res["result"])
+        except Exception as exc:  # noqa: BLE001
+            self.get_logger().warn(f"mode job {cid} failed: {exc}")
+            self._report(cid, "failed", f"模式切换异常:{exc}")
+        finally:
+            self._mode_thread = None
+
     def _poll(self) -> None:
         try:
             resp = self.poster.get_json(f"/api/robot/commands/pending?limit={self.pending_limit}")
@@ -94,6 +135,10 @@ class CommandReceiverNode(Node):
             return
         for cmd in (resp or {}).get("items", []):
             self._handle(cmd)
+        try:
+            self.poster.post_json("/api/robot/mode", {"mode": read_mode(self._mode_state_file)})
+        except Exception as exc:  # noqa: BLE001 - heartbeat best-effort
+            self.get_logger().debug(f"mode report failed: {exc}")
 
     def _resolve_command(self, cmd: dict) -> dict:
         """find_item -> look the asset up on the backend, return a recheck/laser command."""
@@ -130,6 +175,18 @@ class CommandReceiverNode(Node):
             return
 
         plan = dispatch_command(resolved, self.stations_cfg, self.gimbal_cfg)
+        if "set_mode" in plan or "save_map" in plan:
+            if self._mode_thread and self._mode_thread.is_alive():
+                self._report(cid, "failed", "模式切换进行中,请稍后")
+                return
+            if "set_mode" in plan:
+                fn, arg = self._mode.set_mode, plan["set_mode"]
+            else:
+                fn, arg = self._mode.save_map, plan["save_map"]
+            self._mode_thread = threading.Thread(
+                target=self._run_mode_job, args=(cid, fn, arg), daemon=True)
+            self._mode_thread.start()
+            return
         if "unsupported" in plan:
             self.get_logger().info(f"{cid} unsupported: {plan['unsupported']}")
             self._report(cid, "failed", plan["unsupported"])
