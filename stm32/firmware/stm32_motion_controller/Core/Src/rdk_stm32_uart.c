@@ -214,6 +214,27 @@ int rdk_unpack_cmd_vel(const uint8_t *payload, uint8_t len, rdk_cmd_vel_t *cmd)
     return 0;
 }
 
+static float get_f32_le(const uint8_t *in)
+{
+    /* Little-endian IEEE-754 float; STM32F4 is little-endian so a memcpy is safe. */
+    float v;
+    memcpy(&v, in, sizeof(v));
+    return v;
+}
+
+int rdk_unpack_set_pid(const uint8_t *payload, uint8_t len, rdk_pid_gains_t *gains)
+{
+    if ((payload == 0) || (gains == 0) || (len != 17u)) {
+        return -1;
+    }
+    gains->wheel = payload[0];
+    gains->kp = get_f32_le(&payload[1]);
+    gains->ki = get_f32_le(&payload[5]);
+    gains->kd = get_f32_le(&payload[9]);
+    gains->ff = get_f32_le(&payload[13]);
+    return 0;
+}
+
 void rdk_pack_status(uint8_t out[8], const rdk_status_t *status)
 {
     out[0] = status->mode;

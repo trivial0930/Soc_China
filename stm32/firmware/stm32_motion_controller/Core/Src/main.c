@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "mecanum_drive.h"
 #include "rdk_stm32_uart.h"
+#include "wheel_pid.h"
 #include "usb_device.h"
 #include "usbd_cdc_if.h"
 
@@ -58,6 +59,31 @@ typedef struct
 #define APP_CHASSIS_HALF_WIDTH_M 0.10f
 #define APP_CHASSIS_MAX_WHEEL_RADPS 30.0f
 #define APP_CHASSIS_PWM_MAX 999u
+/* Closed-loop velocity PID: control step rate and encoder scale.
+   ticks_per_rev = encoder_PPR*4*gear (calibrated 2026-06-08 hand-roll = 2613). */
+#define APP_CTRL_PERIOD_MS 20u
+#define APP_TICKS_PER_REV 2613.0f
+#define APP_TWO_PI 6.28318530718f
+/* EMA low-pass on measured wheel velocity: at 20ms the encoder delta is only a
+   few dozen ticks, so +/-1 tick quantization is ~6% noise that the PID amplifies
+   into oscillation once Ki is raised. Filtering it lets Ki close the steady-state
+   error without ringing. alpha in (0,1]; smaller = smoother but more lag. */
+#define APP_VEL_LPF_ALPHA 0.5f
+/* Medium top speed: cap each wheel setpoint (proportional, preserves the motion
+   direction). 8 rad/s * 0.05 m wheel = 0.4 m/s. The robot does not need to be
+   fast (per spec). */
+#define APP_WHEEL_SETPOINT_MAX 8.0f
+/* Encoder-stall / dropped-feedback safety: if a wheel is commanded to move but
+   reads ~no motion for APP_STALL_TIMEOUT_MS, cut its output (and hold the PID
+   reset) so a loose encoder cannot wind the integral up into a full-speed run. */
+#define APP_STALL_SETPOINT_MIN 1.0f   /* rad/s: only guard when really commanded */
+/* Relaxed 2026-06-27 after the PCB build (encoders verified, no longer the flaky
+   breadboard): the old 0.4rad/s / 400ms guard false-tripped on high-load ground
+   moves (esp. mecanum strafe, which starts slowly) and cut the wheels before the
+   PID could push through. Now only a wheel essentially not moving (<0.15 rad/s)
+   for >1.5s counts as a dropped-encoder/hard-stall. */
+#define APP_STALL_MEASURED_MAX 0.15f  /* rad/s: below this counts as "not moving" */
+#define APP_STALL_TIMEOUT_MS 1500u
 
 /* USER CODE END PD */
 
@@ -89,6 +115,19 @@ static volatile uint32_t app_last_heartbeat_ms;
 static uint32_t app_last_status_ms;
 static MecanumDrive app_chassis;
 static volatile MecanumMotorCommand app_last_motor_command[MECANUM_WHEEL_COUNT];
+
+/* Per-wheel velocity PID closed-loop state. Setpoints are the Mix output
+   (rad/s, forward-positive). Measured velocity is derived from encoder deltas;
+   APP_WHEEL_ENC_SIGN makes a forward wheel rotation read positive (matches the
+   RDK encoder_sign [1,-1,1,-1] for LF,RF,LR,RR). */
+static WheelPid app_wheel_pid[MECANUM_WHEEL_COUNT];
+static float app_wheel_setpoint_radps[MECANUM_WHEEL_COUNT];
+static float app_wheel_vel_filt[MECANUM_WHEEL_COUNT];
+static uint32_t app_wheel_stall_ms[MECANUM_WHEEL_COUNT];
+static int16_t app_last_enc[MECANUM_WHEEL_COUNT];
+static uint8_t app_have_last_enc;
+static uint32_t app_last_ctrl_ms;
+static const int8_t APP_WHEEL_ENC_SIGN[MECANUM_WHEEL_COUNT] = {1, -1, 1, -1};
 /* RF and RR motor channels are physically swapped vs the encoders (verified
    2026-06-11 by per-wheel encoder+visual): the realized [vx,vy,wz] response of
    physical RF equals the standard RR row and vice versa. RF/RR share the same
@@ -120,6 +159,7 @@ static void app_encoders_start(void);
 static void send_odom(void);
 static void app_uart_start(void);
 static void app_tick(void);
+static void app_control_step(uint32_t now_ms);
 static void app_update_comm_state(uint32_t now_ms);
 static void dispatch_frame(const rdk_frame_t *frame);
 static void send_ack(uint8_t ack_type, uint8_t ack_seq, uint8_t result);
@@ -540,8 +580,11 @@ static void app_tick(void)
 {
   uint32_t now = HAL_GetTick();
 
-  MecanumDrive_UpdateTimeout(&app_chassis, now);
+  /* app_update_comm_state stops the chassis (zeroing setpoints + resetting the
+     PIDs) on estop / heartbeat-loss / command timeout; app_control_step then
+     runs the closed-loop velocity tracking at APP_CTRL_PERIOD_MS. */
   app_update_comm_state(now);
+  app_control_step(now);
   if ((uint32_t)(now - app_last_status_ms) >= APP_STATUS_PERIOD_MS)
   {
     app_last_status_ms = now;
@@ -668,6 +711,31 @@ static void dispatch_frame(const rdk_frame_t *frame)
       }
       break;
 
+    case RDK_FRAME_SET_PID:
+    {
+      rdk_pid_gains_t gains;
+      if (rdk_unpack_set_pid(frame->payload, frame->len, &gains) != 0)
+      {
+        result = RDK_ACK_LEN_ERROR;
+      }
+      else
+      {
+        uint8_t w;
+        for (w = 0u; w < (uint8_t)MECANUM_WHEEL_COUNT; w++)
+        {
+          if ((gains.wheel == 0xFFu) || (gains.wheel == w))
+          {
+            app_wheel_pid[w].cfg.kp = gains.kp;
+            app_wheel_pid[w].cfg.ki = gains.ki;
+            app_wheel_pid[w].cfg.kd = gains.kd;
+            app_wheel_pid[w].cfg.ff = gains.ff;
+            WheelPid_Reset(&app_wheel_pid[w]);
+          }
+        }
+      }
+      break;
+    }
+
     case RDK_FRAME_STOP:
       if (frame->len != 1u)
       {
@@ -706,6 +774,32 @@ static void app_chassis_init(void)
   cfg.user = 0;
 
   (void)MecanumDrive_Init(&app_chassis, &cfg);
+
+  /* Per-wheel velocity PID. ff = pwm_max/max_radps reproduces the open-loop
+     mapping exactly when kp=ki=kd=0, so closed loop starts behaving identically
+     to before and gains are raised live via SET_PID. */
+  {
+    WheelPidConfig pidcfg;
+    uint8_t i;
+    /* Tuned on hardware 2026-06-14 (suspended, with velocity LPF): tracks the
+       4 rad/s setpoint to ~1-16% with no ringing. PID is default-ON (per user:
+       bake the gains in). Still runtime-overridable via SET_PID. */
+    pidcfg.kp = 15.0f;
+    pidcfg.ki = 30.0f;
+    pidcfg.kd = 0.0f;
+    pidcfg.ff = (float)APP_CHASSIS_PWM_MAX / APP_CHASSIS_MAX_WHEEL_RADPS;
+    pidcfg.out_min = -(float)APP_CHASSIS_PWM_MAX;
+    pidcfg.out_max = (float)APP_CHASSIS_PWM_MAX;
+    pidcfg.integral_min = -(float)APP_CHASSIS_PWM_MAX;
+    pidcfg.integral_max = (float)APP_CHASSIS_PWM_MAX;
+    for (i = 0u; i < (uint8_t)MECANUM_WHEEL_COUNT; i++) {
+      WheelPid_Init(&app_wheel_pid[i], &pidcfg);
+      app_wheel_setpoint_radps[i] = 0.0f;
+      app_wheel_vel_filt[i] = 0.0f;
+    }
+    app_have_last_enc = 0u;
+    app_last_ctrl_ms = HAL_GetTick();
+  }
 }
 
 static void app_write_motor(MecanumWheelId wheel, const MecanumMotorCommand *command, void *user)
@@ -752,21 +846,194 @@ static void app_write_motor(MecanumWheelId wheel, const MecanumMotorCommand *com
 
 static void app_cmd_to_chassis(const rdk_cmd_vel_t *cmd)
 {
+  float wheel_radps[MECANUM_WHEEL_COUNT];
+  uint8_t i;
+
   if (cmd == 0)
   {
     return;
   }
 
-  MecanumDrive_SetVelocity(&app_chassis,
-                           ((float)cmd->vx_mm_s) / 1000.0f,
-                           ((float)cmd->vy_mm_s) / 1000.0f,
-                           ((float)cmd->wz_mrad_s) / 1000.0f,
-                           HAL_GetTick());
+  /* Body twist -> per-wheel setpoints (rad/s). The closed-loop control step
+     (app_control_step) tracks these with the per-wheel PID at APP_CTRL_PERIOD_MS.
+     We no longer convert to PWM here (that was the open-loop path). */
+  MecanumDrive_Mix(((float)cmd->vx_mm_s) / 1000.0f,
+                   ((float)cmd->vy_mm_s) / 1000.0f,
+                   ((float)cmd->wz_mrad_s) / 1000.0f,
+                   &app_chassis.cfg,
+                   wheel_radps);
+
+  /* Medium-speed cap: scale all wheels by one factor if any exceeds the limit,
+     so the motion direction is preserved (clamping wheels individually would
+     distort the trajectory). */
+  {
+    float maxabs = 0.0f;
+    float scale = 1.0f;
+    for (i = 0u; i < (uint8_t)MECANUM_WHEEL_COUNT; i++)
+    {
+      float a = (wheel_radps[i] >= 0.0f) ? wheel_radps[i] : -wheel_radps[i];
+      if (a > maxabs)
+      {
+        maxabs = a;
+      }
+    }
+    if (maxabs > APP_WHEEL_SETPOINT_MAX)
+    {
+      scale = APP_WHEEL_SETPOINT_MAX / maxabs;
+    }
+    for (i = 0u; i < (uint8_t)MECANUM_WHEEL_COUNT; i++)
+    {
+      app_wheel_setpoint_radps[i] = wheel_radps[i] * scale;
+    }
+  }
 }
 
 static void app_chassis_stop(void)
 {
+  uint8_t i;
+  for (i = 0u; i < (uint8_t)MECANUM_WHEEL_COUNT; i++)
+  {
+    app_wheel_setpoint_radps[i] = 0.0f;
+    WheelPid_Reset(&app_wheel_pid[i]);
+  }
   MecanumDrive_Stop(&app_chassis);
+}
+
+/* int16 quadrature counter wrap-safe delta (handles 0<->65535 rollover). */
+static int16_t app_wrapped_delta_u16(uint16_t now, uint16_t prev)
+{
+  return (int16_t)(uint16_t)(now - prev);
+}
+
+/* Fixed-rate closed-loop velocity control. Reads each wheel's encoder delta,
+   converts to rad/s (forward-positive), runs the per-wheel PID against the
+   stored setpoint, and writes PWM+direction. When not actively commanded
+   (estop / IDLE / command timed out) it forces motors off and holds the PIDs
+   reset, so a stalled/dropped encoder can never wind up into a runaway. */
+static void app_control_step(uint32_t now_ms)
+{
+  uint32_t dt_ms;
+  float dt;
+  float rad_per_tick;
+  uint16_t raw[MECANUM_WHEEL_COUNT];
+  uint8_t active;
+  uint8_t i;
+
+  dt_ms = (uint32_t)(now_ms - app_last_ctrl_ms);
+  if (dt_ms < APP_CTRL_PERIOD_MS)
+  {
+    return;
+  }
+  app_last_ctrl_ms = now_ms;
+  dt = (float)dt_ms / 1000.0f;
+
+  /* Same encoder->wheel mapping as send_odom (LF<-TIM2, RF<-TIM1, LR<-TIM5,
+     RR<-TIM4; left encoders are physically cross-wired). */
+  raw[MECANUM_WHEEL_LF] = (uint16_t)__HAL_TIM_GET_COUNTER(&htim2);
+  raw[MECANUM_WHEEL_RF] = (uint16_t)__HAL_TIM_GET_COUNTER(&htim1);
+  raw[MECANUM_WHEEL_LR] = (uint16_t)__HAL_TIM_GET_COUNTER(&htim5);
+  raw[MECANUM_WHEEL_RR] = (uint16_t)__HAL_TIM_GET_COUNTER(&htim4);
+
+  if (app_have_last_enc == 0u)
+  {
+    for (i = 0u; i < (uint8_t)MECANUM_WHEEL_COUNT; i++)
+    {
+      app_last_enc[i] = (int16_t)raw[i];
+    }
+    app_have_last_enc = 1u;
+    return; /* need a baseline before the first velocity estimate */
+  }
+
+  active = (uint8_t)((app_estop == 0u) &&
+                     (app_mode != RDK_MODE_IDLE) &&
+                     ((uint32_t)(now_ms - app_last_cmd_ms) < APP_CMD_TIMEOUT_MS));
+
+  rad_per_tick = APP_TWO_PI / APP_TICKS_PER_REV;
+
+  for (i = 0u; i < (uint8_t)MECANUM_WHEEL_COUNT; i++)
+  {
+    int16_t d = app_wrapped_delta_u16(raw[i], (uint16_t)app_last_enc[i]);
+    float measured;
+    float out;
+    MecanumMotorCommand cmd;
+
+    app_last_enc[i] = (int16_t)raw[i];
+
+    if (active == 0u)
+    {
+      WheelPid_Reset(&app_wheel_pid[i]);
+      app_wheel_vel_filt[i] = 0.0f;
+      app_wheel_stall_ms[i] = 0u;
+      cmd.pwm = 0u;
+      cmd.dir = MECANUM_DIR_STOP;
+      app_write_motor((MecanumWheelId)i, &cmd, 0);
+      continue;
+    }
+
+    measured = (float)d * (float)APP_WHEEL_ENC_SIGN[i] * rad_per_tick / dt;
+    /* EMA low-pass to suppress encoder-quantization noise before the PID. */
+    app_wheel_vel_filt[i] += APP_VEL_LPF_ALPHA * (measured - app_wheel_vel_filt[i]);
+    measured = app_wheel_vel_filt[i];
+
+    /* Encoder-stall / dropped-feedback guard: commanded to move but no motion
+       seen -> count time; past the timeout, cut this wheel so its PID integral
+       can't wind up into a full-speed runaway on a loose encoder. */
+    {
+      float sp_abs = (app_wheel_setpoint_radps[i] >= 0.0f)
+                     ? app_wheel_setpoint_radps[i] : -app_wheel_setpoint_radps[i];
+      float meas_abs = (measured >= 0.0f) ? measured : -measured;
+      if ((sp_abs > APP_STALL_SETPOINT_MIN) && (meas_abs < APP_STALL_MEASURED_MAX))
+      {
+        app_wheel_stall_ms[i] += dt_ms;
+      }
+      else
+      {
+        app_wheel_stall_ms[i] = 0u;
+      }
+      if (app_wheel_stall_ms[i] >= APP_STALL_TIMEOUT_MS)
+      {
+        WheelPid_Reset(&app_wheel_pid[i]);
+        cmd.pwm = 0u;
+        cmd.dir = MECANUM_DIR_STOP;
+        app_write_motor((MecanumWheelId)i, &cmd, 0);
+        continue;
+      }
+    }
+
+    out = WheelPid_Update(&app_wheel_pid[i],
+                          app_wheel_setpoint_radps[i], measured, dt);
+
+    {
+      float mag = (out >= 0.0f) ? out : -out;
+      int8_t invert = (app_chassis.cfg.invert[i] < 0) ? -1 : 1;
+      int8_t dir_sign = (out >= 0.0f) ? 1 : -1;
+      uint16_t pwm;
+
+      if (mag > (float)app_chassis.cfg.pwm_max)
+      {
+        mag = (float)app_chassis.cfg.pwm_max;
+      }
+      pwm = (uint16_t)(mag + 0.5f);
+      if (pwm < app_chassis.cfg.pwm_deadband)
+      {
+        pwm = 0u;
+      }
+      cmd.pwm = pwm;
+      if (pwm == 0u)
+      {
+        cmd.dir = MECANUM_DIR_STOP;
+      }
+      else if ((dir_sign * invert) > 0)
+      {
+        cmd.dir = MECANUM_DIR_FORWARD;
+      }
+      else
+      {
+        cmd.dir = MECANUM_DIR_REVERSE;
+      }
+      app_write_motor((MecanumWheelId)i, &cmd, 0);
+    }
+  }
 }
 
 static HAL_StatusTypeDef send_protocol_frame(uint8_t type, const uint8_t *payload, uint8_t payload_len)

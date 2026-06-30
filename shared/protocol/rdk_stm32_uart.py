@@ -30,6 +30,7 @@ class FrameType(IntEnum):
     CMD_VEL = 0x10
     STOP = 0x11
     SET_MODE = 0x12
+    SET_PID = 0x13
     STATUS = 0x81
     ODOM = 0x82
     FAULT = 0x83
@@ -293,6 +294,17 @@ def pack_set_mode(mode: Union[Mode, int]) -> bytes:
 def unpack_set_mode(payload: bytes) -> Mode:
     _require_len(payload, 1, "SET_MODE")
     return Mode(payload[0])
+
+
+# Per-wheel velocity-PID gains. wheel: 0..3 = LF/RF/LR/RR, 0xFF = all wheels.
+# Payload = wheel(u8) + kp,ki,kd,ff (4x little-endian float32) = 17 bytes.
+def pack_set_pid(wheel: int, kp: float, ki: float, kd: float, ff: float) -> bytes:
+    return struct.pack("<Bffff", _u8(wheel, "wheel"), kp, ki, kd, ff)
+
+
+def unpack_set_pid(payload: bytes) -> Tuple[int, float, float, float, float]:
+    _require_len(payload, 17, "SET_PID")
+    return struct.unpack("<Bffff", payload)
 
 
 def pack_status(status: Status) -> bytes:

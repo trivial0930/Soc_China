@@ -19,6 +19,7 @@ typedef enum {
     RDK_FRAME_CMD_VEL = 0x10,
     RDK_FRAME_STOP = 0x11,
     RDK_FRAME_SET_MODE = 0x12,
+    RDK_FRAME_SET_PID = 0x13,
     RDK_FRAME_STATUS = 0x81,
     RDK_FRAME_ODOM = 0x82,
     RDK_FRAME_FAULT = 0x83,
@@ -62,6 +63,15 @@ typedef struct {
     int16_t vy_mm_s;
     int16_t wz_mrad_s;
 } rdk_cmd_vel_t;
+
+/* Runtime per-wheel velocity-PID gains (for live tuning over the link). */
+typedef struct {
+    uint8_t wheel;   /* 0..3 = LF/RF/LR/RR, 0xFF = all wheels */
+    float kp;
+    float ki;
+    float kd;
+    float ff;
+} rdk_pid_gains_t;
 
 typedef struct {
     uint8_t mode;
@@ -112,6 +122,9 @@ int rdk_unpack_heartbeat(const uint8_t *payload, uint8_t len, uint32_t *uptime_m
 
 void rdk_pack_cmd_vel(uint8_t out[6], const rdk_cmd_vel_t *cmd);
 int rdk_unpack_cmd_vel(const uint8_t *payload, uint8_t len, rdk_cmd_vel_t *cmd);
+
+/* SET_PID payload: wheel(u8) + kp,ki,kd,ff (4x little-endian float32) = 17 bytes. */
+int rdk_unpack_set_pid(const uint8_t *payload, uint8_t len, rdk_pid_gains_t *gains);
 
 void rdk_pack_status(uint8_t out[8], const rdk_status_t *status);
 void rdk_pack_ack(uint8_t out[3], const rdk_ack_t *ack);
