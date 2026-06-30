@@ -20,6 +20,7 @@
 - 实现:命令经现有命令队列(`set_mode`/`save_map`)→ RDK `command_receiver` 调 `mapping_mode_on.sh`/`off.sh`/`save_map.sh`;状态文件 `/root/.robot_mode`,经 uplink/command_receiver 上报。设计见 `docs/superpowers/specs/2026-06-30-app-mapping-mode-design.md`。
 
 > 关开关 = 拆建图栈 + 重拉语音栈。命令通道(uplink+command_receiver+acceptance)全程不停,所以建图中也始终能从 App 发"退出"。
+> 注意:建图模式中若 RDK 重启,开机自启会拉回正常语音栈,但状态文件 `/root/.robot_mode` 仍记 `mapping`(App 会短暂显示建图中);点一次 OFF 即自愈回 normal。建图是临时态,别让它跨重启。
 
 ## 2.（备用/手动）RDK 端命令行起栈
 App 不可用时,SSH 上 RDK 手动起:
