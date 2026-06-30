@@ -208,6 +208,33 @@ class SaveMapTest(unittest.TestCase):
         finally:
             c.cleanup()
 
+    def test_save_map_sanitizes_name(self):
+        c = _Ctl(self.base(), current=MODE_MAPPING, rc=0)
+        try:
+            r = c.ctl.save_map("../evil map")
+            self.assertEqual(c.calls, ["SAVE evil_map"])
+            self.assertEqual(r["status"], "done")
+        finally:
+            c.cleanup()
+
+    def test_save_map_failure_invokes_script(self):
+        c = _Ctl(self.base(), current=MODE_MAPPING, rc=1)
+        try:
+            r = c.ctl.save_map("lab")
+            self.assertEqual(c.calls, ["SAVE lab"])
+            self.assertEqual(r["status"], "failed")
+        finally:
+            c.cleanup()
+
+    def test_save_map_blocked_in_error_mode(self):
+        c = _Ctl(self.base(), current=MODE_ERROR, rc=0)
+        try:
+            r = c.ctl.save_map("lab")
+            self.assertEqual(c.calls, [])
+            self.assertEqual(r["status"], "failed")
+        finally:
+            c.cleanup()
+
 
 if __name__ == "__main__":
     unittest.main()
