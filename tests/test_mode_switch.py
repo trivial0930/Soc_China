@@ -8,7 +8,7 @@ if str(PKG) not in sys.path:
 
 from inspection_manager.mode_switch import (  # noqa: E402,F811
     MODE_NORMAL, MODE_MAPPING, MODE_SWITCHING, MODE_ERROR,
-    read_mode, write_mode, SwitchLock, ModeController,
+    read_mode, write_mode, SwitchLock, ModeController, sanitize_map_name,
 )
 
 
@@ -169,6 +169,42 @@ class SetModeTest(unittest.TestCase):
             r = c.ctl.set_mode(MODE_MAPPING)
             self.assertEqual(r["status"], "busy")
             self.assertEqual(c.calls, [])
+        finally:
+            c.cleanup()
+
+
+class SaveMapTest(unittest.TestCase):
+    def base(self):
+        return Path(self.id().replace(".", "_"))
+
+    def test_sanitize_strips_unsafe(self):
+        self.assertEqual(sanitize_map_name("../lab map!!"), "lab_map")
+        self.assertEqual(sanitize_map_name(""), "lab_map")
+        self.assertEqual(sanitize_map_name("floor-2_A"), "floor-2_A")
+
+    def test_save_map_only_in_mapping(self):
+        c = _Ctl(self.base(), current=MODE_NORMAL, rc=0)
+        try:
+            r = c.ctl.save_map("lab")
+            self.assertEqual(r["status"], "failed")
+            self.assertEqual(c.calls, [])
+        finally:
+            c.cleanup()
+
+    def test_save_map_runs_in_mapping(self):
+        c = _Ctl(self.base(), current=MODE_MAPPING, rc=0)
+        try:
+            r = c.ctl.save_map("lab")
+            self.assertEqual(r["status"], "done")
+            self.assertEqual(c.calls, ["SAVE lab"])
+        finally:
+            c.cleanup()
+
+    def test_save_map_failure_reported(self):
+        c = _Ctl(self.base(), current=MODE_MAPPING, rc=1)
+        try:
+            r = c.ctl.save_map("lab")
+            self.assertEqual(r["status"], "failed")
         finally:
             c.cleanup()
 
