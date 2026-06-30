@@ -59,3 +59,45 @@ class SwitchLock:
     def _write_ts(self, ts: float) -> None:
         with open(self.lock_path, "w", encoding="utf-8") as fh:
             fh.write(str(ts))
+
+
+class ModeController:
+    def __init__(self, *, run_script, state_path, lock_path, on_script, off_script,
+                 save_script, now, lock_timeout_s: float = 90.0):
+        self.run_script = run_script
+        self.state_path = state_path
+        self.on_script = on_script
+        self.off_script = off_script
+        self.save_script = save_script
+        self.lock = SwitchLock(lock_path, lock_timeout_s, now)
+
+    def current_mode(self) -> str:
+        return read_mode(self.state_path)
+
+    def set_mode(self, target: str) -> dict:
+        if target not in VALID_MODES:
+            return {"status": "failed", "mode": self.current_mode(),
+                    "result": f"非法模式:{target}"}
+        cur = self.current_mode()
+        if cur == target:
+            return {"status": "noop", "mode": cur, "result": f"已处于 {target} 模式"}
+        if not self.lock.acquire():
+            return {"status": "busy", "mode": cur, "result": "模式切换进行中,请稍后"}
+        try:
+            write_mode(self.state_path, MODE_SWITCHING)
+            if target == MODE_MAPPING:
+                rc = self.run_script(self.on_script)
+                if rc == 0:
+                    write_mode(self.state_path, MODE_MAPPING)
+                    return {"status": "done", "mode": MODE_MAPPING, "result": "已进入建图模式"}
+                write_mode(self.state_path, MODE_ERROR)
+                return {"status": "failed", "mode": MODE_ERROR,
+                        "result": f"建图栈启动失败(rc={rc}),已停在安全态"}
+            rc = self.run_script(self.off_script)
+            write_mode(self.state_path, MODE_NORMAL)
+            if rc == 0:
+                return {"status": "done", "mode": MODE_NORMAL, "result": "已恢复正常模式"}
+            return {"status": "warn", "mode": MODE_NORMAL,
+                    "result": f"已退出建图,但语音层部分未恢复(rc={rc}),可重试"}
+        finally:
+            self.lock.release()

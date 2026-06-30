@@ -6,8 +6,9 @@ PKG = ROOT / "rdk_x5/ros2_ws/src/inspection_manager"
 if str(PKG) not in sys.path:
     sys.path.insert(0, str(PKG))
 
-from inspection_manager.mode_switch import (  # noqa: E402
-    MODE_NORMAL, MODE_MAPPING, read_mode, write_mode, SwitchLock,
+from inspection_manager.mode_switch import (  # noqa: E402,F811
+    MODE_NORMAL, MODE_MAPPING, MODE_SWITCHING, MODE_ERROR,
+    read_mode, write_mode, SwitchLock, ModeController,
 )
 
 
@@ -63,6 +64,113 @@ class SwitchLockTest(unittest.TestCase):
         self.assertTrue(lk.acquire())
         lk.release()
         self.assertTrue(SwitchLock(self.lock_path, 90.0, self.now).acquire())
+
+
+class _Ctl:
+    """构造一个 ModeController，记录被调用的脚本。"""
+    def __init__(self, tmpbase, current=MODE_NORMAL, rc=0):
+        self.state = str(Path(tmpbase).with_suffix(".mode"))
+        self.lock = str(Path(tmpbase).with_suffix(".lock"))
+        write_mode(self.state, current)
+        self.calls = []
+        self.rc = rc
+        self.t = [100.0]
+        self.ctl = ModeController(
+            run_script=self._run, state_path=self.state, lock_path=self.lock,
+            on_script="ON", off_script="OFF", save_script="SAVE",
+            now=lambda: self.t[0], lock_timeout_s=90.0)
+
+    def _run(self, cmd):
+        self.calls.append(cmd)
+        return self.rc
+
+    def cleanup(self):
+        for p in (self.state, self.lock):
+            try:
+                Path(p).unlink()
+            except OSError:
+                pass
+
+
+class SetModeTest(unittest.TestCase):
+    def base(self):
+        return Path(self.id().replace(".", "_"))
+
+    def test_enter_mapping_success(self):
+        c = _Ctl(self.base(), current=MODE_NORMAL, rc=0)
+        try:
+            r = c.ctl.set_mode(MODE_MAPPING)
+            self.assertEqual(r["status"], "done")
+            self.assertEqual(r["mode"], MODE_MAPPING)
+            self.assertEqual(c.calls, ["ON"])
+            self.assertEqual(read_mode(c.state), MODE_MAPPING)
+        finally:
+            c.cleanup()
+
+    def test_enter_mapping_failure_stays_error(self):
+        c = _Ctl(self.base(), current=MODE_NORMAL, rc=1)
+        try:
+            r = c.ctl.set_mode(MODE_MAPPING)
+            self.assertEqual(r["status"], "failed")
+            self.assertEqual(read_mode(c.state), MODE_ERROR)
+        finally:
+            c.cleanup()
+
+    def test_exit_to_normal_success(self):
+        c = _Ctl(self.base(), current=MODE_MAPPING, rc=0)
+        try:
+            r = c.ctl.set_mode(MODE_NORMAL)
+            self.assertEqual(r["status"], "done")
+            self.assertEqual(c.calls, ["OFF"])
+            self.assertEqual(read_mode(c.state), MODE_NORMAL)
+        finally:
+            c.cleanup()
+
+    def test_exit_partial_restore_warns_but_normal(self):
+        c = _Ctl(self.base(), current=MODE_MAPPING, rc=2)
+        try:
+            r = c.ctl.set_mode(MODE_NORMAL)
+            self.assertEqual(r["status"], "warn")
+            self.assertEqual(read_mode(c.state), MODE_NORMAL)
+        finally:
+            c.cleanup()
+
+    def test_idempotent_noop_when_already_target(self):
+        c = _Ctl(self.base(), current=MODE_MAPPING, rc=0)
+        try:
+            r = c.ctl.set_mode(MODE_MAPPING)
+            self.assertEqual(r["status"], "noop")
+            self.assertEqual(c.calls, [])      # 没跑脚本
+        finally:
+            c.cleanup()
+
+    def test_retry_from_error_runs_on_script(self):
+        c = _Ctl(self.base(), current=MODE_ERROR, rc=0)
+        try:
+            r = c.ctl.set_mode(MODE_MAPPING)   # error != mapping -> 重试
+            self.assertEqual(r["status"], "done")
+            self.assertEqual(c.calls, ["ON"])
+        finally:
+            c.cleanup()
+
+    def test_invalid_mode_rejected(self):
+        c = _Ctl(self.base(), current=MODE_NORMAL, rc=0)
+        try:
+            r = c.ctl.set_mode("banana")
+            self.assertEqual(r["status"], "failed")
+            self.assertEqual(c.calls, [])
+        finally:
+            c.cleanup()
+
+    def test_busy_when_lock_held(self):
+        c = _Ctl(self.base(), current=MODE_NORMAL, rc=0)
+        try:
+            SwitchLock(c.lock, 90.0, lambda: c.t[0]).acquire()  # 外部占锁(新鲜)
+            r = c.ctl.set_mode(MODE_MAPPING)
+            self.assertEqual(r["status"], "busy")
+            self.assertEqual(c.calls, [])
+        finally:
+            c.cleanup()
 
 
 if __name__ == "__main__":
