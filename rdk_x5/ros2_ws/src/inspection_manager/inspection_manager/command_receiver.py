@@ -117,6 +117,17 @@ def dispatch_command(cmd: Dict[str, Any], stations_cfg: Optional[Dict[str, Any]]
             return {"unsupported": "set_volume 需要整数 level (0-100)"}
         return {"set_volume": level, "result": f"播报音量已设为 {level}"}
 
+    if ctype == "set_mode":
+        mode = str(params.get("mode", ""))
+        if mode not in ("mapping", "normal"):
+            return {"unsupported": "set_mode 需要 mode=mapping|normal"}
+        return {"set_mode": mode,
+                "result": "已请求进入建图模式" if mode == "mapping" else "已请求恢复正常模式"}
+
+    if ctype == "save_map":
+        name = str(params.get("name") or "lab_map")
+        return {"save_map": name, "result": f"已请求存图:{name}"}
+
     return {"unsupported": f"机器人侧暂未接入命令类型:{ctype}"}
 
 

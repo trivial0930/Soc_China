@@ -6,9 +6,8 @@
 
 | 接口 | 连接对象 | 用途 | 线号 | 状态 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| UART_TX | STM32 UART_RX | 速度命令/控制帧 | TBD | 待确认 | 3.3V TTL |
-| UART_RX | STM32 UART_TX | 状态回传 | TBD | 待确认 | 3.3V TTL |
-| GND | STM32 GND | 共地 | TBD | 待确认 | 必须共地 |
+| USB-A | STM32 Type-C | 底盘命令+状态(USB CDC) | — | ✅ 实测通过 | `/dev/ttyACM*`,by-id 固定名;取代旧 40-pin UART |
+| USB-A | 雷神 N10 雷达 | 激光雷达 | — | ✅ | `/dev/ttyACM0`(1a86 CH343)|
 | MIPI CSI | RDK Camera | 主视觉 | TBD | 待确认 | 注意排线方向 |
 | USB | RPLIDAR A2 | 雷达 | TBD | 待确认 | 如保留 |
 | USB/ETH/Wi-Fi | Fixed Monitor Camera | 固定监控输入 | TBD | 待确认 | USB 用 `/dev/video*`，网络摄像头记录 RTSP/HTTP 地址 |
@@ -40,14 +39,28 @@ SPI 节点 `/dev/spidev5.0`，I2C 总线 `/dev/i2c-5`。
 > 工作参数：`--spi-bus 1 --spi-device 1 --i2c-bus 5 --cs-gpio-pin 7`。详见
 > `docs/validation/daily/2026-06-07-thermal-90-bringup.md`。MOSI/MISO/SCLK 仍在 19/21/23。
 
-## STM32F411CEU6
+## STM32F411CEU6（事实源:固件 main.c app_motor_hw + hal_msp.c,2026-06-14 实测核对）
 
-| 接口 | 连接对象 | 用途 | 线号 | 状态 | 备注 |
-| --- | --- | --- | --- | --- | --- |
-| UART_RX | RDK UART_TX | 接收控制帧 | TBD | 待确认 | 3.3V TTL |
-| UART_TX | RDK UART_RX | 回传状态 | TBD | 待确认 | 3.3V TTL |
-| PWM1/DIR1 | MDDS20-1 A | 左前轮 | LF | 待确认 | 方向需实测 |
-| PWM2/DIR2 | MDDS20-1 B | 右前轮 | RF | 待确认 | 方向需实测 |
-| PWM3/DIR3 | MDDS20-2 A | 左后轮 | LR | 待确认 | 方向需实测 |
-| PWM4/DIR4 | MDDS20-2 B | 右后轮 | RR | 待确认 | 方向需实测 |
-| GPIO | 急停 | 安全停机 | TBD | 待确认 | 必须实测 |
+底盘链路已从 40-pin UART 改为**黑药丸原生 USB CDC(Type-C)**(RDK serial3↔i2c5 引脚硬冲突,见 [[stm32-usb-cdc-migration]])。
+四轮电机/编码器经**转接板**分组引出(左 LF+LR、右 RF+RR),完整连接器引脚表见
+`docs/hardware/pcb_breakout_pinout.md`,速查卡见 `docs/hardware/wiring_quick_ref.md`。
+
+| 链路 | 连接对象 | STM32 脚 | 状态 | 备注 |
+| --- | --- | --- | --- | --- |
+| USB CDC | RDK USB-A | PA11/PA12(Type-C) | ✅ 实测通过 | 底盘通信,枚举为 `/dev/ttyACM*`(by-id 固定名)|
+| SWD | ST-Link | PA13(DIO)/PA14(CLK) | ✅ | 烧录调试 |
+| USART2 | (冗余,未用) | PA2/PA3 | 闲置 | 通信已迁 USB;RX 未 arm |
+
+**四轮电机控制 + 编码器(权威引脚表)**
+
+| 轮 | PWM | IN1 | IN2 | 编码器A | 编码器B | 编码器定时器 | 连接器 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| LF 左前 | PA6 | PB12 | PB13 | PA15 | PB3 | TIM2 | J_L_CTRL / J_L_ENC |
+| LR 左后 | PA7 | PB14 | PB15 | PA0 | PA1 | TIM5 | J_L_CTRL / J_L_ENC |
+| RF 右前 | PB1 | PB8 | PB9 | PA8 | PA9 | TIM1 | J_R_CTRL / J_R_ENC |
+| RR 右后 | PB0 | PA4 | PA5 | PB6 | PB7 | TIM4 | J_R_CTRL / J_R_ENC |
+
+> 编码器以固件 `send_odom` 为准(LF←TIM2、LR←TIM5,含 06-11 左侧交叉补偿);
+> MSP 注释里 TIM2="LR"/TIM5="LF" 是旧标签,勿信。
+> 编码器供电 **3V3**(霍尔上限 3.6V,勿接 5V)。每条 PWM/IN 线加 10k 下拉。
+> PC13 = 板载 LED;空闲脚 PB10/PB11/PA10/PA2/PA3。

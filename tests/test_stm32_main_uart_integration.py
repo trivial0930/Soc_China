@@ -20,8 +20,12 @@ class Stm32MainUartIntegrationTest(unittest.TestCase):
             "HAL_UART_Receive_IT(&huart2, &uart_rx_byte, 1)",
             "static MecanumDrive app_chassis",
             "app_chassis_init()",
-            "MecanumDrive_SetVelocity(&app_chassis,",
-            "MecanumDrive_UpdateTimeout(&app_chassis, now)",
+            # Closed-loop velocity PID (2026-06-14): CMD_VEL -> Mix -> per-wheel
+            # setpoints, tracked by WheelPid in the fixed-rate app_control_step.
+            "MecanumDrive_Mix(",
+            "app_control_step(now)",
+            "WheelPid_Update(",
+            "RDK_FRAME_SET_PID",
             "MecanumDrive_Stop(&app_chassis)",
             "app_cmd_to_chassis(&cmd)",
             "app_write_motor",

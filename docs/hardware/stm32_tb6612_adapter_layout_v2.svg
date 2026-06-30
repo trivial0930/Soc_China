@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="900" viewBox="0 0 1240 900" font-family="monospace">
+  <rect x="0" y="0" width="1240" height="900" fill="#0d1117"/>
+  <text x="620" y="34" fill="#e6edf3" font-size="22" text-anchor="middle">STM32F411 黑药丸转接板 v2 — 布局(信号源:固件 app_motor_hw,2026-06-14)</text>
+  <text x="620" y="58" fill="#8b949e" font-size="13" text-anchor="middle">左侧=LF+LR · 右侧=RF+RR · ≥8 GND · 详见 pcb_breakout_pinout.md</text>
+
+  <!-- PCB outline -->
+  <rect x="40" y="80" width="1160" height="780" rx="10" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+
+  <!-- ===== Black pill (center) ===== -->
+  <rect x="500" y="200" width="240" height="470" rx="6" fill="#1f6feb22" stroke="#58a6ff" stroke-width="2"/>
+  <text x="620" y="225" fill="#58a6ff" font-size="16" text-anchor="middle">U17  WeAct 黑药丸 2×20 母座</text>
+  <!-- Type-C -->
+  <rect x="560" y="150" width="120" height="42" rx="6" fill="#21262d" stroke="#f0f6fc" stroke-width="2"/>
+  <text x="620" y="176" fill="#f0f6fc" font-size="15" text-anchor="middle">TYPE-C (USB CDC)</text>
+  <text x="620" y="143" fill="#8b949e" font-size="11" text-anchor="middle">PA11/PA12 — 底盘通信链路(朝板外缘)</text>
+  <!-- SWD -->
+  <rect x="545" y="678" width="150" height="40" rx="5" fill="#21262d" stroke="#d29922" stroke-width="2"/>
+  <text x="620" y="703" fill="#d29922" font-size="14" text-anchor="middle">J_SWD  PA13/PA14</text>
+  <text x="620" y="735" fill="#8b949e" font-size="11" text-anchor="middle">3V3 · SWDIO · SWCLK · GND</text>
+
+  <!-- pin rows hint -->
+  <text x="520" y="250" fill="#8b949e" font-size="10">PB12 PB13 PB14 PB15</text>
+  <text x="520" y="266" fill="#8b949e" font-size="10">PA15 PB3 PA8 PA9</text>
+  <text x="520" y="282" fill="#8b949e" font-size="10">PB6 PB7 PB8 PB9</text>
+  <text x="520" y="298" fill="#8b949e" font-size="10">(左排)</text>
+  <text x="700" y="250" fill="#8b949e" font-size="10" text-anchor="end">PA6 PA7</text>
+  <text x="700" y="266" fill="#8b949e" font-size="10" text-anchor="end">PB0 PB1</text>
+  <text x="700" y="282" fill="#8b949e" font-size="10" text-anchor="end">PA4 PA5</text>
+  <text x="700" y="298" fill="#8b949e" font-size="10" text-anchor="end">PA0 PA1 (右排)</text>
+
+  <!-- ===== LEFT side: LF + LR ===== -->
+  <text x="70" y="115" fill="#3fb950" font-size="16">◀ 左侧边:LF + LR</text>
+
+  <!-- J_L_CTRL -->
+  <rect x="70" y="135" width="200" height="180" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="2"/>
+  <text x="80" y="156" fill="#3fb950" font-size="14">J_L_CTRL → TB6612-A</text>
+  <text x="80" y="178" fill="#e6edf3" font-size="12">1 LF_PWM   PA6</text>
+  <text x="80" y="196" fill="#e6edf3" font-size="12">2 LF_IN1   PB12</text>
+  <text x="80" y="214" fill="#e6edf3" font-size="12">3 LF_IN2   PB13</text>
+  <text x="80" y="232" fill="#f85149" font-size="12">4 GND</text>
+  <text x="80" y="250" fill="#e6edf3" font-size="12">5 LR_PWM   PA7</text>
+  <text x="80" y="268" fill="#e6edf3" font-size="12">6 LR_IN1   PB14</text>
+  <text x="80" y="286" fill="#e6edf3" font-size="12">7 LR_IN2   PB15</text>
+  <text x="80" y="304" fill="#f85149" font-size="12">8 GND</text>
+
+  <!-- J_L_ENC -->
+  <rect x="70" y="335" width="200" height="180" rx="6" fill="#0d1117" stroke="#3fb950" stroke-width="2"/>
+  <text x="80" y="356" fill="#3fb950" font-size="14">J_L_ENC ← LF/LR 编码器</text>
+  <text x="80" y="378" fill="#e6edf3" font-size="12">1 LF_ENCA  PA15</text>
+  <text x="80" y="396" fill="#e6edf3" font-size="12">2 LF_ENCB  PB3</text>
+  <text x="80" y="414" fill="#d29922" font-size="12">3 +3V3</text>
+  <text x="80" y="432" fill="#f85149" font-size="12">4 GND</text>
+  <text x="80" y="450" fill="#e6edf3" font-size="12">5 LR_ENCA  PA0</text>
+  <text x="80" y="468" fill="#e6edf3" font-size="12">6 LR_ENCB  PA1</text>
+  <text x="80" y="486" fill="#d29922" font-size="12">7 +3V3</text>
+  <text x="80" y="504" fill="#f85149" font-size="12">8 GND</text>
+
+  <!-- ===== RIGHT side: RF + RR ===== -->
+  <text x="1170" y="115" fill="#a371f7" font-size="16" text-anchor="end">右侧边:RF + RR ▶</text>
+
+  <!-- J_R_CTRL -->
+  <rect x="970" y="135" width="200" height="180" rx="6" fill="#0d1117" stroke="#a371f7" stroke-width="2"/>
+  <text x="980" y="156" fill="#a371f7" font-size="14">J_R_CTRL → TB6612-B</text>
+  <text x="980" y="178" fill="#e6edf3" font-size="12">1 RF_PWM   PB1</text>
+  <text x="980" y="196" fill="#e6edf3" font-size="12">2 RF_IN1   PB8</text>
+  <text x="980" y="214" fill="#e6edf3" font-size="12">3 RF_IN2   PB9</text>
+  <text x="980" y="232" fill="#f85149" font-size="12">4 GND</text>
+  <text x="980" y="250" fill="#e6edf3" font-size="12">5 RR_PWM   PB0</text>
+  <text x="980" y="268" fill="#e6edf3" font-size="12">6 RR_IN1   PA4</text>
+  <text x="980" y="286" fill="#e6edf3" font-size="12">7 RR_IN2   PA5</text>
+  <text x="980" y="304" fill="#f85149" font-size="12">8 GND</text>
+
+  <!-- J_R_ENC -->
+  <rect x="970" y="335" width="200" height="180" rx="6" fill="#0d1117" stroke="#a371f7" stroke-width="2"/>
+  <text x="980" y="356" fill="#a371f7" font-size="14">J_R_ENC ← RF/RR 编码器</text>
+  <text x="980" y="378" fill="#e6edf3" font-size="12">1 RF_ENCA  PA8</text>
+  <text x="980" y="396" fill="#e6edf3" font-size="12">2 RF_ENCB  PA9</text>
+  <text x="980" y="414" fill="#d29922" font-size="12">3 +3V3</text>
+  <text x="980" y="432" fill="#f85149" font-size="12">4 GND</text>
+  <text x="980" y="450" fill="#e6edf3" font-size="12">5 RR_ENCA  PB6</text>
+  <text x="980" y="468" fill="#e6edf3" font-size="12">6 RR_ENCB  PB7</text>
+  <text x="980" y="486" fill="#d29922" font-size="12">7 +3V3</text>
+  <text x="980" y="504" fill="#f85149" font-size="12">8 GND</text>
+
+  <!-- ===== Power input (bottom center) ===== -->
+  <rect x="500" y="780" width="240" height="64" rx="6" fill="#0d1117" stroke="#f85149" stroke-width="2"/>
+  <text x="620" y="802" fill="#f85149" font-size="14" text-anchor="middle">J_PWR  电机电源 12V</text>
+  <text x="620" y="822" fill="#e6edf3" font-size="12" text-anchor="middle">1 VM+   2 GND   3 GND</text>
+  <text x="620" y="838" fill="#8b949e" font-size="10" text-anchor="middle">保险丝 + 防反接 + TVS + 大电解 → 两块 TB6612 VM</text>
+
+  <!-- connecting lines -->
+  <line x1="270" y1="225" x2="500" y2="270" stroke="#3fb950" stroke-width="1.5" opacity="0.6"/>
+  <line x1="270" y1="425" x2="500" y2="330" stroke="#3fb950" stroke-width="1.5" opacity="0.6"/>
+  <line x1="970" y1="225" x2="740" y2="270" stroke="#a371f7" stroke-width="1.5" opacity="0.6"/>
+  <line x1="970" y1="425" x2="740" y2="330" stroke="#a371f7" stroke-width="1.5" opacity="0.6"/>
+  <line x1="620" y1="780" x2="620" y2="670" stroke="#f85149" stroke-width="1.5" opacity="0.6"/>
+
+  <!-- notes -->
+  <text x="70" y="560" fill="#8b949e" font-size="12">• 每条 PWM/IN 线加 10k 下拉到 GND(复位时电机不乱动,关键安全项)</text>
+  <text x="70" y="580" fill="#8b949e" font-size="12">• 编码器供电 = 3V3(霍尔上限 3.6V,勿接 5V)</text>
+  <text x="70" y="600" fill="#8b949e" font-size="12">• GND 计数:4 连接器 ×2 = 8(+ J_PWR 2 + 黑药丸自带)≥ 8 ✅</text>
+  <text x="70" y="620" fill="#8b949e" font-size="12">• 保留:PA11/PA12=USB · PA13/PA14=SWD · PC13=LED</text>
+  <text x="70" y="640" fill="#8b949e" font-size="12">• 双层板,底层 GND 覆铜;PWM/IN 走线短、远离编码器线</text>
+</svg>
