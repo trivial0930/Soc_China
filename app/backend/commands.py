@@ -68,6 +68,12 @@ def _v_set_volume(p: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _v_passthrough(p: Dict[str, Any]) -> Optional[str]:
+    # mapping-mode commands (set_mode {mode}, save_map {name?}) are whitelisted but NOT
+    # business-validated here — the RDK judges legality and returns failed on a bad mode.
+    return None
+
+
 # type -> validator(params) -> error string or None
 COMMAND_VALIDATORS = {
     "inspection_round": _v_inspection_round,
@@ -79,6 +85,8 @@ COMMAND_VALIDATORS = {
     "generate_report": _v_generate_report,
     "voice_control": _v_voice_control,
     "set_volume": _v_set_volume,
+    "set_mode": _v_passthrough,
+    "save_map": _v_passthrough,
 }
 COMMAND_TYPES = frozenset(COMMAND_VALIDATORS)
 

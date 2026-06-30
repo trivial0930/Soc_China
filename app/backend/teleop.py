@@ -64,3 +64,24 @@ class TeleopStore:
             return {"state": "unknown", "front_dist_m": None, "age_ms": STALE_AGE_MS}
         return {"state": self._state, "front_dist_m": self._front,
                 "age_ms": (float(now) - self._s_ts) * 1000.0}
+
+
+class LatestValue:
+    """Generic latest-only heartbeat: stores a dict payload + receive time, adds age_ms
+    on read (large sentinel before the first write). Used for the robot mode heartbeat
+    (RDK POSTs its true mode every tick; App reads mode + age_ms to detect offline).
+    """
+
+    def __init__(self, default: dict) -> None:
+        self._default = dict(default)
+        self._value: Optional[dict] = None
+        self._ts: Optional[float] = None
+
+    def set(self, value: dict, now: float) -> None:
+        self._value = dict(value)
+        self._ts = float(now)
+
+    def get(self, now: float) -> dict:
+        if self._ts is None:
+            return {**self._default, "age_ms": STALE_AGE_MS}
+        return {**self._value, "age_ms": (float(now) - self._ts) * 1000.0}

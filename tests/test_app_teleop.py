@@ -57,5 +57,24 @@ class StatusTests(unittest.TestCase):
         self.assertIsNone(s.get_status(now=20.0)["front_dist_m"])
 
 
+class LatestValueTests(unittest.TestCase):
+    """Generic latest-only heartbeat store (used for robot mode)."""
+
+    def test_default_before_first_set(self):
+        v = teleop.LatestValue({"mode": "unknown"})
+        g = v.get(now=5.0)
+        self.assertEqual(g["mode"], "unknown")
+        self.assertGreaterEqual(g["age_ms"], 1e8)
+
+    def test_set_get_and_age(self):
+        v = teleop.LatestValue({"mode": "unknown"})
+        v.set({"mode": "mapping"}, now=10.0)
+        self.assertEqual(v.get(now=10.0), {"mode": "mapping", "age_ms": 0.0})
+        self.assertAlmostEqual(v.get(now=12.0)["age_ms"], 2000.0)
+        v.set({"mode": "normal"}, now=20.0)             # overwrite + reset age
+        self.assertEqual(v.get(now=20.0)["mode"], "normal")
+        self.assertAlmostEqual(v.get(now=20.0)["age_ms"], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

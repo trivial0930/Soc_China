@@ -28,6 +28,7 @@ config.ensure_dirs()
 STORE = store_mod.Store(config.DB_PATH)
 BROKER = push_mod.Broker()
 TELEOP = teleop_mod.TeleopStore()  # latest-only low-latency drive channel (in-memory)
+MODE = teleop_mod.LatestValue({"mode": "unknown"})  # latest robot mode the RDK reports
 
 
 async def _retention_sweep() -> None:
@@ -241,6 +242,22 @@ def teleop_set_status(body: dict, _=Depends(require_token)):
 @app.get("/api/robot/teleop/status")
 def teleop_get_status():
     return TELEOP.get_status(now=time.monotonic())
+
+
+# ------------------------------------------------------------ robot mode (mapping)
+# The RDK is the source of truth: it POSTs its real mode every poll tick; the backend
+# only stores + forwards the latest (no inference). App reads mode + age_ms to know
+# whether the robot is still reporting. Mode switching itself goes via set_mode/save_map
+# commands on the normal queue (§4.6).
+@app.post("/api/robot/mode")
+def robot_mode_set(body: dict, _=Depends(require_token)):
+    MODE.set({"mode": str(body.get("mode", "unknown"))}, now=time.monotonic())
+    return {"ok": True}
+
+
+@app.get("/api/robot/mode")
+def robot_mode_get():
+    return MODE.get(now=time.monotonic())
 
 
 # --------------------------------------------------------------------- images

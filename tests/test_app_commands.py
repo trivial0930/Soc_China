@@ -41,6 +41,15 @@ class ValidateCommandTests(unittest.TestCase):
         self.assertIsNone(commands.validate_command("laser_point", {"location": "柜2/抽屉3"}))
         self.assertIsNotNone(commands.validate_command("laser_point", {}))
 
+    def test_set_mode_and_save_map_accepted_without_business_validation(self):
+        # whitelisted but no param validation (RDK judges legality, returns failed if bad)
+        self.assertIsNone(commands.validate_command("set_mode", {"mode": "mapping"}))
+        self.assertIsNone(commands.validate_command("set_mode", {"mode": "normal"}))
+        self.assertIsNone(commands.validate_command("set_mode", {}))          # bad/missing -> RDK rejects
+        self.assertIsNone(commands.validate_command("save_map", {"name": "lab_a"}))
+        self.assertIsNone(commands.validate_command("save_map", {}))          # name optional
+        self.assertIsNotNone(commands.validate_command("set_mode", "nope"))   # still must be an object
+
     def test_set_volume_requires_int_0_100(self):
         self.assertIsNone(commands.validate_command("set_volume", {"level": 0}))
         self.assertIsNone(commands.validate_command("set_volume", {"level": 100}))
