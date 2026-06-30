@@ -110,6 +110,22 @@ class DispatchTests(unittest.TestCase):
     def test_unknown_type_reported(self):
         self.assertIn("unsupported", dispatch_command({"type": "teleport", "params": {}}, STATIONS))
 
+    def test_set_mode_mapping_recognized(self):
+        plan = dispatch_command({"type": "set_mode", "params": {"mode": "mapping"}})
+        self.assertEqual(plan["set_mode"], "mapping")
+
+    def test_set_mode_invalid_unsupported(self):
+        plan = dispatch_command({"type": "set_mode", "params": {"mode": "fly"}})
+        self.assertIn("unsupported", plan)
+
+    def test_save_map_recognized_with_default_name(self):
+        plan = dispatch_command({"type": "save_map", "params": {}})
+        self.assertEqual(plan["save_map"], "lab_map")
+
+    def test_save_map_uses_given_name(self):
+        plan = dispatch_command({"type": "save_map", "params": {"name": "floor2"}})
+        self.assertEqual(plan["save_map"], "floor2")
+
 
 if __name__ == "__main__":
     unittest.main()
