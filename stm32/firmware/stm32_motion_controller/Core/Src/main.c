@@ -84,6 +84,11 @@ typedef struct
    for >1.5s counts as a dropped-encoder/hard-stall. */
 #define APP_STALL_MEASURED_MAX 0.15f  /* rad/s: below this counts as "not moving" */
 #define APP_STALL_TIMEOUT_MS 1500u
+/* Zero-command safety: when a wheel is commanded to ~stop, force its motor off and
+   hold the PID reset instead of running the closed loop. A wound-up integral (e.g.
+   from a mis-mapped/mis-signed encoder while driving) can otherwise keep driving the
+   wheel at setpoint 0 -> runaway at rest. "Stop means stop", immune to feedback faults. */
+#define APP_SETPOINT_DEADBAND 0.10f   /* rad/s: |setpoint| below this -> motor off */
 
 /* USER CODE END PD */
 
@@ -927,11 +932,13 @@ static void app_control_step(uint32_t now_ms)
   app_last_ctrl_ms = now_ms;
   dt = (float)dt_ms / 1000.0f;
 
-  /* Same encoder->wheel mapping as send_odom (LF<-TIM2, RF<-TIM1, LR<-TIM5,
-     RR<-TIM4; left encoders are physically cross-wired). */
-  raw[MECANUM_WHEEL_LF] = (uint16_t)__HAL_TIM_GET_COUNTER(&htim2);
+  /* Same encoder->wheel mapping as send_odom. Re-mapped 2026-07-06 after a hot-glued
+     rewire: per-wheel hand-spin showed physical LF's encoder now lands on TIM5 and
+     physical LR on TIM2 (the left pair swapped vs the old wiring), so LF<-TIM5 and
+     LR<-TIM2. RF<-TIM1, RR<-TIM4 unchanged. Signs {+1,-1,+1,-1} already correct. */
+  raw[MECANUM_WHEEL_LF] = (uint16_t)__HAL_TIM_GET_COUNTER(&htim5);
   raw[MECANUM_WHEEL_RF] = (uint16_t)__HAL_TIM_GET_COUNTER(&htim1);
-  raw[MECANUM_WHEEL_LR] = (uint16_t)__HAL_TIM_GET_COUNTER(&htim5);
+  raw[MECANUM_WHEEL_LR] = (uint16_t)__HAL_TIM_GET_COUNTER(&htim2);
   raw[MECANUM_WHEEL_RR] = (uint16_t)__HAL_TIM_GET_COUNTER(&htim4);
 
   if (app_have_last_enc == 0u)
@@ -968,6 +975,24 @@ static void app_control_step(uint32_t now_ms)
       cmd.dir = MECANUM_DIR_STOP;
       app_write_motor((MecanumWheelId)i, &cmd, 0);
       continue;
+    }
+
+    /* Zero-command guard: commanded to ~stop -> force motor off + hold PID reset,
+       so a wound-up integral (e.g. from a bad encoder while driving) can never keep
+       the wheel running at setpoint 0. Coasts to a stop, immune to feedback faults. */
+    {
+      float sp = app_wheel_setpoint_radps[i];
+      float sp_abs = (sp >= 0.0f) ? sp : -sp;
+      if (sp_abs < APP_SETPOINT_DEADBAND)
+      {
+        WheelPid_Reset(&app_wheel_pid[i]);
+        app_wheel_vel_filt[i] = 0.0f;
+        app_wheel_stall_ms[i] = 0u;
+        cmd.pwm = 0u;
+        cmd.dir = MECANUM_DIR_STOP;
+        app_write_motor((MecanumWheelId)i, &cmd, 0);
+        continue;
+      }
     }
 
     measured = (float)d * (float)APP_WHEEL_ENC_SIGN[i] * rad_per_tick / dt;
@@ -1107,14 +1132,15 @@ static void app_encoders_start(void)
 static void send_odom(void)
 {
   /* Raw 16-bit quadrature counter per wheel (x4 counts). Order: LF, RF, LR, RR.
-     Physical wiring (verified 2026-06-11 by per-wheel hand-spin): the two LEFT
-     encoders were cross-wired -- physical LF lands on TIM2(PA15/PB3) and physical
-     LR on TIM5(PA0/PA1). We therefore read LF<-TIM2 and LR<-TIM5 so the ODOM
-     payload is canonical (LF,RF,LR,RR). RF=TIM1(PA8/PA9) RR=TIM4(PB6/PB7) OK. */
+     Physical wiring re-verified 2026-07-06 by per-wheel hand-spin after a hot-glued
+     rewire: the left pair swapped again -- physical LF now lands on TIM5(PA0/PA1)
+     and physical LR on TIM2(PA15/PB3). We therefore read LF<-TIM5 and LR<-TIM2 so
+     the ODOM payload is canonical (LF,RF,LR,RR). RF=TIM1(PA8/PA9) RR=TIM4(PB6/PB7) OK.
+     Must stay in sync with the identical mapping in app_control_step. */
   uint8_t payload[8];
-  int16_t lf = (int16_t)__HAL_TIM_GET_COUNTER(&htim2);
+  int16_t lf = (int16_t)__HAL_TIM_GET_COUNTER(&htim5);
   int16_t rf = (int16_t)__HAL_TIM_GET_COUNTER(&htim1);
-  int16_t lr = (int16_t)__HAL_TIM_GET_COUNTER(&htim5);
+  int16_t lr = (int16_t)__HAL_TIM_GET_COUNTER(&htim2);
   int16_t rr = (int16_t)__HAL_TIM_GET_COUNTER(&htim4);
 
   rdk_pack_odom(payload, lf, rf, lr, rr);
