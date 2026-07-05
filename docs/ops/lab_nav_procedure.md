@@ -20,7 +20,7 @@ ros2 launch chassis_bringup nav.launch.py
 ## 4. 验栈(另一个终端)
 ```
 ros2 node list | grep -E "amcl|controller_server|planner_server|bt_navigator|map_server"
-ros2 lifecycle get /amcl /controller_server /planner_server /bt_navigator   # 应 active
+for n in /amcl /controller_server /planner_server /bt_navigator /map_server; do echo -n "$n: "; ros2 lifecycle get $n; done   # 各应 active
 ros2 run tf2_ros tf2_echo map odom      # 非空 = map->odom 有了
 ros2 topic echo --once /amcl_pose       # 有位姿
 ```
