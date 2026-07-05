@@ -19,7 +19,9 @@ import math
 ACC_ADDR = 0x18
 GYR_ADDR = 0x68
 
-ACC_CHIP_ID = 0x00      # -> 0x1E
+ACC_CHIP_ID = 0x00      # register; value -> 0x1E
+ACC_ID = 0x1E           # expected accel CHIP_ID value
+GYR_ID = 0x0F           # expected gyro CHIP_ID value
 ACC_DATA = 0x12         # X_LSB..Z_MSB (6 bytes)
 ACC_CONF = 0x40
 ACC_RANGE = 0x41
@@ -108,17 +110,38 @@ class Bmi088:
     def gyro_chip_id(self):
         return self._read_retry(self.gyr_addr, GYR_CHIP_ID)[0]
 
+    def probe_accel(self):
+        """True if the accel answers with the expected CHIP_ID, else False.
+
+        Never raises — a dead/absent accel just returns False so callers can
+        fall back to gyro-only (the RDK accel is prone to going offline; the
+        EKF only needs gyro yaw-rate anyway)."""
+        try:
+            return self.accel_chip_id() == ACC_ID
+        except Exception:  # noqa: BLE001 - absent accel -> not present
+            return False
+
     def setup(self):
-        """Power up accel, set ranges. Gyro is active after POR."""
+        """Power up accel + gyro, set ranges. Gyro is active after POR."""
+        self.setup_accel()
+        self.setup_gyro()
+
+    def setup_accel(self):
+        """Bring the accel out of suspend and set its range/ODR.
+
+        Only call when the accel is actually present (see probe_accel); the
+        writes raise on a dead accel."""
         import time
-        # accel out of suspend
         self._write_retry(self.acc_addr, ACC_PWR_CTRL, 0x04)
         time.sleep(0.05)
         self._write_retry(self.acc_addr, ACC_PWR_CONF, 0x00)
         time.sleep(0.05)
         self._write_retry(self.acc_addr, ACC_RANGE, self._acc_range_reg)
         self._write_retry(self.acc_addr, ACC_CONF, 0xA8)  # ODR 100Hz, normal BW
-        # gyro
+
+    def setup_gyro(self):
+        """Set the gyro range/bandwidth (gyro is active after POR)."""
+        import time
         self._write_retry(self.gyr_addr, GYR_RANGE, self._gyr_range_reg)
         self._write_retry(self.gyr_addr, GYR_BANDWIDTH, 0x07)  # 100 Hz ODR / 32 Hz
         time.sleep(0.05)
