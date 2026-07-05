@@ -17,15 +17,21 @@ stm32_bridge:
     cmd_vel_timeout_s: 0.5  # zero the target if no /cmd_vel within this window
 
     # --- chassis geometry (must match firmware app_chassis_init) ---
-    wheel_radius_m: 0.05
+    # wheel_radius measured 2026-07-06 with a ruler: ~38mm (was a wrong 0.05).
+    wheel_radius_m: 0.038
     half_length_m: 0.12
     half_width_m: 0.10
 
     # --- encoder odometry ---
     # ticks_per_rev = encoder_PPR * 4 (x4) * gear_ratio.
-    # Calibrated 2026-06-08 by hand-rolling RF 6 turns: 15679 ticks / 6 = 2613
-    # (hand-roll estimate, ~+/-2-3%; refine later by driving a measured distance).
-    ticks_per_rev: 2613.0
+    # RE-CALIBRATED 2026-07-06 by hand-rolling LF exactly 5 turns: the count
+    # plateaued at 6615 ticks -> 6615/5 = 1323. Triple-confirmed: matches the old
+    # placeholder 1320, AND a measured ground drive (real 13cm vs predicted 13.4cm
+    # with tpr=1323,r=0.038 -- the old 2613 predicted only 6.8cm). The prior
+    # "RF 6 turns = 2613" was a miscount (~12 turns; it is exactly 2x too big).
+    # NOTE: firmware APP_TICKS_PER_REV is still 2613 -> its PID velocity estimate
+    # and stall threshold read 2x low; fix + reflash as a follow-up.
+    ticks_per_rev: 1323.0
     # Per-wheel sign so forward wheel rotation -> positive count. Order LF,RF,LR,RR.
     # Measured 2026-06-11 (4 wheels, +vx forward drive verified on ground):
     # forward raw signs were LF+ RF- LR+ RR-, so flip RF/RR to make forward->+.
