@@ -54,15 +54,20 @@ typedef struct
 #define APP_FAULT_HEARTBEAT_TIMEOUT 0x0002u
 #define APP_FAULT_CMD_TIMEOUT 0x0003u
 #define APP_FAULT_CRC_ERROR_LIMIT 0x0004u
-#define APP_CHASSIS_WHEEL_RADIUS_M 0.05f
+#define APP_CHASSIS_WHEEL_RADIUS_M 0.038f  /* ruler-measured 2026-07-06 (was 0.05);
+   used for the cmd_vel->wheel-radps inverse kinematics. Must match the RDK odom
+   wheel_radius_m in stm32_bridge.yaml or commanded vx won't equal real vx. */
 #define APP_CHASSIS_HALF_LENGTH_M 0.12f
 #define APP_CHASSIS_HALF_WIDTH_M 0.10f
 #define APP_CHASSIS_MAX_WHEEL_RADPS 30.0f
 #define APP_CHASSIS_PWM_MAX 999u
 /* Closed-loop velocity PID: control step rate and encoder scale.
-   ticks_per_rev = encoder_PPR*4*gear (calibrated 2026-06-08 hand-roll = 2613). */
+   ticks_per_rev = encoder_PPR*4*gear. RE-CALIBRATED 2026-07-06: hand-rolled LF
+   exactly 5 turns -> 6615 ticks / 5 = 1323 (the old 2613 was a miscount, ~2x too
+   big; it made the measured wheel velocity read half-real, so the loop over-drove
+   ~2x and the stall threshold tripped at 2x). Matches stm32_bridge.yaml odom. */
 #define APP_CTRL_PERIOD_MS 20u
-#define APP_TICKS_PER_REV 2613.0f
+#define APP_TICKS_PER_REV 1323.0f
 #define APP_TWO_PI 6.28318530718f
 /* EMA low-pass on measured wheel velocity: at 20ms the encoder delta is only a
    few dozen ticks, so +/-1 tick quantization is ~6% noise that the PID amplifies
@@ -70,9 +75,10 @@ typedef struct
    error without ringing. alpha in (0,1]; smaller = smoother but more lag. */
 #define APP_VEL_LPF_ALPHA 0.5f
 /* Medium top speed: cap each wheel setpoint (proportional, preserves the motion
-   direction). 8 rad/s * 0.05 m wheel = 0.4 m/s. The robot does not need to be
-   fast (per spec). */
-#define APP_WHEEL_SETPOINT_MAX 8.0f
+   direction). 10.5 rad/s * 0.038 m wheel = 0.4 m/s, matching the RDK vx clamp
+   (max_vx_mm_s=400) so the full commanded range maps 1:1 to real speed. The robot
+   does not need to be fast (per spec). */
+#define APP_WHEEL_SETPOINT_MAX 10.5f
 /* Encoder-stall / dropped-feedback safety: if a wheel is commanded to move but
    reads ~no motion for APP_STALL_TIMEOUT_MS, cut its output (and hold the PID
    reset) so a loose encoder cannot wind the integral up into a full-speed run. */
