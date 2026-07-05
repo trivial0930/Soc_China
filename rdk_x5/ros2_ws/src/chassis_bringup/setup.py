@@ -24,6 +24,7 @@ setup(
     entry_points={
         "console_scripts": [
             "waypoint_patrol = chassis_bringup.waypoint_patrol:main",
+            "send_goal = chassis_bringup.send_goal:main",
         ],
     },
 )

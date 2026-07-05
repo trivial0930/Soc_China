@@ -37,3 +37,61 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--timeout", type=float, default=120.0,
                    help="cancel if not arrived within this many seconds")
     return p
+
+
+def _make_pose(nav, x: float, y: float, yaw: float):
+    """PoseStamped in the map frame (ROS types resolved lazily)."""
+    from geometry_msgs.msg import PoseStamped
+    ps = PoseStamped()
+    ps.header.frame_id = "map"
+    ps.header.stamp = nav.get_clock().now().to_msg()
+    ps.pose.position.x = x
+    ps.pose.position.y = y
+    qz, qw = yaw_to_quat(yaw)
+    ps.pose.orientation.z = qz
+    ps.pose.orientation.w = qw
+    return ps
+
+
+def main() -> None:
+    import time
+    import rclpy
+    from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
+
+    args = build_parser().parse_args()
+    init = parse_pose(args.init)
+    goal = parse_pose(args.goal)
+
+    rclpy.init()
+    nav = BasicNavigator()
+
+    if init is not None:
+        nav.setInitialPose(_make_pose(nav, *init))
+        nav.get_logger().info(f"initial pose set to {init}")
+
+    nav.get_logger().info("waiting for Nav2 to become active...")
+    nav.waitUntilNav2Active()
+
+    nav.goToPose(_make_pose(nav, *goal))
+    nav.get_logger().info(f"navigating to {goal} (timeout {args.timeout}s)...")
+
+    t0 = time.time()
+    while not nav.isTaskComplete():
+        fb = nav.getFeedback()
+        if fb is not None:
+            nav.get_logger().info(f"remaining {fb.distance_remaining:.2f} m")
+        if time.time() - t0 > args.timeout:
+            nav.cancelTask()
+            nav.get_logger().warn("timeout -> cancelled")
+            break
+        time.sleep(1.0)
+
+    result = nav.getResult()
+    name = getattr(result, "name", str(result))
+    nav.get_logger().info(f"result: {name}")
+    rclpy.shutdown()
+    raise SystemExit(0 if result == TaskResult.SUCCEEDED else 1)
+
+
+if __name__ == "__main__":
+    main()
