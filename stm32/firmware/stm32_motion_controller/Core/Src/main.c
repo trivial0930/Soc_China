@@ -254,7 +254,15 @@ static void app_forensics_report(void)
       (unsigned long)(g_fault_had ? g_fault_last.lr   : 0u));
   if (n > 0)
   {
-    (void)CDC_Transmit_FS((uint8_t *)line, (uint16_t)n);
+    /* The 1 Hz emit lands on the same tick as the 10 Hz telemetry (both on
+       100 ms boundaries), so the CDC is busy — retry briefly until it frees so
+       the line actually goes out instead of being dropped every time. */
+    uint32_t start = HAL_GetTick();
+    while ((CDC_Transmit_FS((uint8_t *)line, (uint16_t)n) == USBD_BUSY) &&
+           ((uint32_t)(HAL_GetTick() - start) < 10u))
+    {
+      /* spin briefly waiting for the in-flight telemetry transfer to complete */
+    }
   }
 }
 
@@ -692,9 +700,13 @@ static void app_tick(void)
     send_status();
     send_odom();
   }
-  /* Emit the boot forensics line once per second for the first 8 s, so whenever the
-     host connects/reads after a (re)boot it catches WHY the MCU last restarted. */
-  if (now < 8000u && (uint32_t)(now - g_forensics_last_ms) >= 1000u)
+  /* Re-emit the forensics line every 5 s indefinitely (not just at boot): the
+     RDK bridge ignores non-0xAA55 bytes, and the way we actually diagnose a hang
+     is by raw-reading the port AFTER it happens. A one-shot boot window is missed
+     if the reader connects late (USB re-enum) or the CDC's single pending slot is
+     hogged by telemetry before a host drains it. Repeating forever makes the last
+     reset cause catchable whenever anyone connects. */
+  if ((uint32_t)(now - g_forensics_last_ms) >= 5000u)
   {
     g_forensics_last_ms = now;
     app_forensics_report();
