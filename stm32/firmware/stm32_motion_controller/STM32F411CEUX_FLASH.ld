@@ -165,6 +165,17 @@ SECTIONS
     __bss_end__ = _ebss;
   } >RAM
 
+  /* Uninitialized RAM the startup code does NOT zero -> retains its value across a
+     warm reset (IWDG / HardFault / NRST / SW). Carries HardFault forensics to the
+     next boot so we can report WHY the MCU restarted. */
+  .noinit (NOLOAD) :
+  {
+    . = ALIGN(4);
+    *(.noinit)
+    *(.noinit*)
+    . = ALIGN(4);
+  } >RAM
+
   /* User_heap_stack section, used to check that there is enough "RAM" Ram  type memory left */
   ._user_heap_stack :
   {

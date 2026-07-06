@@ -81,17 +81,23 @@ void NMI_Handler(void)
 /**
   * @brief This function handles Hard fault interrupt.
   */
-void HardFault_Handler(void)
+/* USER CODE BEGIN HardFault_naked */
+/* Naked so no prologue moves the stack pointer: read the exception frame pointer
+   (MSP or PSP per EXC_RETURN bit 2) into r0 and tail-call app_hardfault_capture
+   (main.c), which stores CFSR/HFSR/PC/LR to .noinit RAM and reboots so the next
+   boot can report it. */
+__attribute__((naked)) void HardFault_Handler(void)
 {
-  /* USER CODE BEGIN HardFault_IRQn 0 */
-
-  /* USER CODE END HardFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
-    /* USER CODE END W1_HardFault_IRQn 0 */
-  }
+  __asm volatile (
+    "tst lr, #4                       \n"
+    "ite eq                           \n"
+    "mrseq r0, msp                    \n"
+    "mrsne r0, psp                    \n"
+    "ldr r1, =app_hardfault_capture   \n"
+    "bx r1                            \n"
+  );
 }
+/* USER CODE END HardFault_naked */
 
 /**
   * @brief This function handles Memory management fault.

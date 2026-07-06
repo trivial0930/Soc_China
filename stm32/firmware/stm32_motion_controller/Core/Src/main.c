@@ -26,6 +26,7 @@
 #include "wheel_pid.h"
 #include "usb_device.h"
 #include "usbd_cdc_if.h"
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -187,6 +188,76 @@ static void app_chassis_stop(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+/* --- Fault forensics: figure out WHY the MCU restarted instead of guessing. ---
+   g_fault_store lives in .noinit RAM (not zeroed by startup) so a HardFault record
+   survives the reset. At boot we read the RCC reset flags (IWDG vs BOR-brownout vs
+   NRST-pin vs POR vs SW) and any stored HardFault, then emit them as a plaintext
+   "[BOOT] ..." line over CDC for the first few seconds (the RDK bridge ignores
+   non-0xAA55 bytes; a raw serial read on the RDK catches it). */
+typedef struct
+{
+  uint32_t magic;
+  uint32_t cfsr, hfsr, bfar, mmfar, pc, lr, psr;
+} FaultRecord;
+#define APP_FAULT_MAGIC 0xDEADFA11u
+
+__attribute__((section(".noinit"))) FaultRecord g_fault_store;  /* survives warm reset */
+static uint32_t g_reset_csr;        /* RCC->CSR captured at boot */
+static FaultRecord g_fault_last;    /* HardFault record from the previous life, if any */
+static uint8_t g_fault_had;         /* 1 if a HardFault record was present at boot */
+static uint32_t g_forensics_last_ms;
+
+/* Called from HardFault_Handler (stm32f4xx_it.c) with the faulting stack pointer.
+   Stacked frame layout: sp[0..7] = R0,R1,R2,R3,R12,LR,PC,xPSR. */
+void app_hardfault_capture(uint32_t *sp)
+{
+  g_fault_store.cfsr  = SCB->CFSR;
+  g_fault_store.hfsr  = SCB->HFSR;
+  g_fault_store.bfar  = SCB->BFAR;
+  g_fault_store.mmfar = SCB->MMFAR;
+  g_fault_store.lr    = sp[5];
+  g_fault_store.pc    = sp[6];
+  g_fault_store.psr   = sp[7];
+  g_fault_store.magic = APP_FAULT_MAGIC;
+  NVIC_SystemReset();               /* reboot -> motor PWM off -> next boot reports it */
+}
+
+/* Read reset cause + any stored HardFault once, at boot. Call before starting IWDG. */
+static void app_forensics_init(void)
+{
+  g_reset_csr = RCC->CSR;
+  RCC->CSR |= RCC_CSR_RMVF;         /* clear reset flags so next boot is fresh */
+  if (g_fault_store.magic == APP_FAULT_MAGIC)
+  {
+    g_fault_last = g_fault_store;
+    g_fault_had = 1u;
+    g_fault_store.magic = 0u;       /* consume it */
+  }
+}
+
+/* Emit the plaintext forensics line over CDC (best-effort; dropped if CDC busy). */
+static void app_forensics_report(void)
+{
+  static char line[176];
+  int n = snprintf(line, sizeof(line),
+      "\r\n[BOOT] CSR=%08lX%s%s%s%s%s | HF=%s CFSR=%08lX HFSR=%08lX PC=%08lX LR=%08lX\r\n",
+      (unsigned long)g_reset_csr,
+      (g_reset_csr & RCC_CSR_IWDGRSTF) ? " IWDG" : "",
+      (g_reset_csr & RCC_CSR_BORRSTF)  ? " BOR"  : "",
+      (g_reset_csr & RCC_CSR_PINRSTF)  ? " PIN"  : "",
+      (g_reset_csr & RCC_CSR_PORRSTF)  ? " POR"  : "",
+      (g_reset_csr & RCC_CSR_SFTRSTF)  ? " SW"   : "",
+      g_fault_had ? "YES" : "no",
+      (unsigned long)(g_fault_had ? g_fault_last.cfsr : 0u),
+      (unsigned long)(g_fault_had ? g_fault_last.hfsr : 0u),
+      (unsigned long)(g_fault_had ? g_fault_last.pc   : 0u),
+      (unsigned long)(g_fault_had ? g_fault_last.lr   : 0u));
+  if (n > 0)
+  {
+    (void)CDC_Transmit_FS((uint8_t *)line, (uint16_t)n);
+  }
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -230,6 +301,9 @@ int main(void)
   app_encoders_start();
   app_chassis_init();
   app_uart_start();
+
+  /* Capture the reset cause + any HardFault record BEFORE starting the watchdog. */
+  app_forensics_init();
 
   /* Independent watchdog (IWDG): LSI-clocked, /32 prescaler, RLR=250 -> ~250 ms.
      SAFETY NET AGAINST RUNAWAY: if app_tick() ever stops kicking it (firmware
@@ -617,6 +691,13 @@ static void app_tick(void)
     app_last_status_ms = now;
     send_status();
     send_odom();
+  }
+  /* Emit the boot forensics line once per second for the first 8 s, so whenever the
+     host connects/reads after a (re)boot it catches WHY the MCU last restarted. */
+  if (now < 8000u && (uint32_t)(now - g_forensics_last_ms) >= 1000u)
+  {
+    g_forensics_last_ms = now;
+    app_forensics_report();
   }
 }
 
