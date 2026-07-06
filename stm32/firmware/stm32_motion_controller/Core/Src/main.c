@@ -231,6 +231,21 @@ int main(void)
   app_chassis_init();
   app_uart_start();
 
+  /* Independent watchdog (IWDG): LSI-clocked, /32 prescaler, RLR=250 -> ~250 ms.
+     SAFETY NET AGAINST RUNAWAY: if app_tick() ever stops kicking it (firmware
+     hang / HardFault infinite-loop / stalled main loop), the MCU resets. On reset
+     the motor-PWM GPIOs go inactive, so the motors STOP instead of latching the
+     last commanded PWM into a runaway. app_tick worst case is ~10 ms (bounded CDC
+     send), far under the timeout, so this never false-fires. Started here (write
+     access via 0x5555 -> PR/RLR -> reload 0xAAAA -> start 0xCCCC); kicked each
+     loop iteration below. IWDG is disabled after any reset, so DFU (BOOT0+RST)
+     is unaffected. */
+  IWDG->KR  = 0x5555u;   /* enable write access to PR/RLR */
+  IWDG->PR  = 3u;        /* prescaler /32 (~1 kHz from LSI) */
+  IWDG->RLR = 250u;      /* reload -> ~250 ms timeout */
+  IWDG->KR  = 0xAAAAu;   /* reload the counter */
+  IWDG->KR  = 0xCCCCu;   /* start the watchdog (cannot be stopped except by reset) */
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -240,6 +255,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    IWDG->KR = 0xAAAAu;   /* kick the watchdog; a hang below stops this -> MCU reset -> motors off */
     app_tick();
   }
   /* USER CODE END 3 */
