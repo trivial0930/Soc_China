@@ -142,6 +142,12 @@ class Stm32BridgeNode(Node):
         self._parser = FrameParser()
         self._last_odom_t = None
         self._ser = None
+        # auto-reconnect: the STM32 re-enumerates on a watchdog reset (motor-noise
+        # hang). Rate-limit reopen attempts so we don't spam serial.Serial() while
+        # the by-id symlink is still gone mid-enumeration.
+        self._reconnect_period_s = 1.0
+        self._next_open_ts = 0.0
+        self._serial_alive = False
         # cumulative per-wheel angle (rad) for /joint_states, order LF,RF,LR,RR
         self._joint_angle = [0.0, 0.0, 0.0, 0.0]
         self._joint_last_ticks = None
@@ -172,18 +178,54 @@ class Stm32BridgeNode(Node):
 
     # ---------------- serial ----------------
     def _open_serial(self) -> None:
+        """Initial open at startup (kept for construction path)."""
+        self._ensure_serial(force=True)
+
+    def _drop_serial(self, why: str) -> None:
+        """Tear down a dead fd (STM32 re-enumerated) so the timers reconnect."""
+        if self._ser is not None or self._serial_alive:
+            self.get_logger().warn(f"serial link lost ({why}); will reconnect")
+        try:
+            if self._ser is not None:
+                self._ser.close()
+        except Exception:
+            pass
+        self._ser = None
+        self._serial_alive = False
+
+    def _ensure_serial(self, force: bool = False) -> bool:
+        """Open the port if not already open, rate-limited. Re-inits STM32 state
+        on a fresh open (re-send SET_MODE, resync odom baseline, drop partial
+        frames) so a watchdog reset doesn't leave us on a stale fd or jump odom."""
+        if self._ser is not None:
+            return True
+        now = time.monotonic()
+        if not force and now < self._next_open_ts:
+            return False
+        self._next_open_ts = now + self._reconnect_period_s
         try:
             import serial
         except ImportError:
             self.get_logger().error("pyserial not installed; bridge will not talk to STM32")
-            return
+            return False
         try:
             self._ser = serial.Serial(self.port, self.baud, timeout=0)
-            self._send(FrameType.SET_MODE, pack_set_mode(self.mode))
-            self.get_logger().info(f"opened {self.port}, sent SET_MODE {self.mode.name}")
         except Exception as exc:
-            self.get_logger().error(f"cannot open {self.port}: {exc}")
+            # by-id symlink may be gone mid re-enumeration; quiet retry.
             self._ser = None
+            return False
+        # fresh link: re-init STM32 + resync so odom stays continuous across reset
+        self._parser = FrameParser()
+        self._last_odom_t = None
+        self._joint_last_ticks = None
+        try:
+            self.odom.resync()
+        except Exception:
+            pass
+        self._serial_alive = True
+        self._send(FrameType.SET_MODE, pack_set_mode(self.mode))
+        self.get_logger().info(f"opened {self.port}, sent SET_MODE {self.mode.name}")
+        return True
 
     def _send(self, ftype: FrameType, payload: bytes) -> None:
         if self._ser is None:
@@ -192,8 +234,8 @@ class Stm32BridgeNode(Node):
         self._seq = next_seq(self._seq)
         try:
             self._ser.write(raw)
-        except Exception as exc:  # pragma: no cover
-            self.get_logger().warn(f"serial write failed: {exc}")
+        except Exception as exc:  # STM32 re-enumerated -> drop + reconnect
+            self._drop_serial(f"write failed: {exc}")
 
     # ---------------- subscribers ----------------
     def _on_cmd_vel(self, msg: Twist) -> None:
@@ -213,6 +255,10 @@ class Stm32BridgeNode(Node):
 
     # ---------------- timers ----------------
     def _on_cmd_timer(self) -> None:
+        # reconnect if the STM32 re-enumerated (watchdog reset). Rate-limited.
+        if self._ser is None:
+            self._ensure_serial()
+            return
         now = time.monotonic()
         if now - self._last_hb_ts >= self._hb_period:
             self._send(FrameType.HEARTBEAT, pack_heartbeat(int(now * 1000) & 0xFFFFFFFF))
@@ -228,8 +274,8 @@ class Stm32BridgeNode(Node):
             return
         try:
             data = self._ser.read(256)
-        except Exception as exc:  # pragma: no cover
-            self.get_logger().warn(f"serial read failed: {exc}")
+        except Exception as exc:  # STM32 re-enumerated -> drop + reconnect
+            self._drop_serial(f"read failed: {exc}")
             return
         if not data:
             return

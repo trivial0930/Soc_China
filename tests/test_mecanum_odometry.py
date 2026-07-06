@@ -123,6 +123,28 @@ class OdometryIntegrationTest(unittest.TestCase):
         st = odo.update(100, 100, 100, 100, 0.1)
         self.assertLess(st.x, 0.0)
 
+    def test_resync_preserves_pose_and_relatches_baseline(self):
+        # Drive forward, then simulate an STM32 watchdog reset: the encoder
+        # counters jump (reset to 0) and we resync(). The accumulated pose must
+        # survive, and the next sample must NOT integrate the bogus jump.
+        odo = self.make()
+        odo.update(0, 0, 0, 0, 0.1)
+        st = odo.update(1000, 1000, 1000, 1000, 0.1)
+        x_before = st.x
+        self.assertGreater(x_before, 0.0)
+
+        odo.resync()  # STM32 re-enumerated; drop tick baseline, keep pose
+        # first post-reset sample: counters are back near 0 -> huge negative wrap
+        # delta if it integrated. resync() must make it re-latch instead.
+        st2 = odo.update(0, 0, 0, 0, 0.1)
+        self.assertAlmostEqual(st2.x, x_before, places=9)  # pose unchanged
+        self.assertAlmostEqual(st2.y, 0.0, places=9)
+        self.assertAlmostEqual(st2.theta, 0.0, places=9)
+
+        # and normal integration resumes from the new baseline
+        st3 = odo.update(1000, 1000, 1000, 1000, 0.1)
+        self.assertGreater(st3.x, x_before)
+
 
 if __name__ == "__main__":
     unittest.main()

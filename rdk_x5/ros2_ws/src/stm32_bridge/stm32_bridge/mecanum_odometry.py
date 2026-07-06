@@ -102,6 +102,16 @@ class MecanumOdometry:
         self._have_last = False
         self._last_ticks = []
 
+    def resync(self) -> None:
+        """Drop the tick baseline WITHOUT touching the accumulated pose.
+
+        Use after the STM32 re-enumerates (e.g. a watchdog reset zeroed its
+        encoder counters): the next update() re-latches the baseline instead of
+        integrating a bogus wrap delta, so x/y/theta stay continuous.
+        """
+        self._have_last = False
+        self._last_ticks = []
+
     def update(
         self,
         ticks_lf: int,
