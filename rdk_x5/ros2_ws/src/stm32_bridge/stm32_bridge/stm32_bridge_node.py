@@ -148,6 +148,7 @@ class Stm32BridgeNode(Node):
         self._reconnect_period_s = 1.0
         self._next_open_ts = 0.0
         self._serial_alive = False
+        self._last_mode_assert = 0.0
         # cumulative per-wheel angle (rad) for /joint_states, order LF,RF,LR,RR
         self._joint_angle = [0.0, 0.0, 0.0, 0.0]
         self._joint_last_ticks = None
@@ -288,6 +289,18 @@ class Stm32BridgeNode(Node):
             self._handle_odom(frame.payload)
         elif frame.frame_type == FrameType.STATUS:
             st = unpack_status(frame.payload)
+            # Re-assert the desired mode if the STM32 is in a different one. It
+            # boots / falls back to IDLE (after a watchdog reset or CMD_TIMEOUT)
+            # and then NACKs every CMD_VEL as MODE_NOT_ALLOWED, so a single
+            # SET_MODE at open isn't enough if it was missed. Rate-limited; stops
+            # as soon as the STM32 reports the target mode.
+            if st.mode != self.mode:
+                now = time.monotonic()
+                if now - self._last_mode_assert >= 0.5:
+                    self._last_mode_assert = now
+                    self._send(FrameType.SET_MODE, pack_set_mode(self.mode))
+                    self.get_logger().warn(
+                        f"STM32 mode={st.mode.name}, re-asserting SET_MODE {self.mode.name}")
             self.status_pub.publish(String(data=(
                 f"mode={st.mode.name} estop={int(st.estop)} fault=0x{st.fault_code:04X} "
                 f"battery={st.battery_mv}mV comm={st.comm_state.name}"
