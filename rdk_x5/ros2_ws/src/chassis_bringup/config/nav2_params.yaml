@@ -6,6 +6,13 @@
 # For pure navigation on a saved map use amcl + map_server; for live mapping use
 # slam_toolbox instead of amcl (see slam_toolbox.yaml).
 
+map_server:
+  ros__parameters:
+    # yaml_filename is rewritten by the launch `map:=...` arg; the key MUST exist
+    # here or the RewrittenYaml has nothing to replace and map_server aborts with
+    # "parameter 'yaml_filename' is not initialized".
+    yaml_filename: ""
+
 amcl:
   ros__parameters:
     base_frame_id: base_link
@@ -13,12 +20,23 @@ amcl:
     global_frame_id: map
     scan_topic: scan
     robot_model_type: "nav2_amcl::OmniMotionModel"   # mecanum = omni
+    transform_tolerance: 1.0   # generous: RDK TF latency caused costmap "extrapolation into the past"
     max_particles: 2000
     min_particles: 500
     laser_max_range: 12.0
     laser_min_range: 0.1
     update_min_a: 0.2
     update_min_d: 0.2
+    # Headless bring-up: seed the filter at startup instead of relying on a
+    # /initialpose message (raw `ros2 topic pub` to /initialpose has QoS/stamp
+    # pitfalls). Robot must be placed at this map pose (mapping start ~= origin).
+    # Override at runtime with send_goal.py --init or a fresh /initialpose.
+    set_initial_pose: true
+    initial_pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
 
 bt_navigator:
   ros__parameters:
@@ -124,6 +142,7 @@ local_costmap:
       publish_frequency: 2.0
       global_frame: odom
       robot_base_frame: base_link
+      transform_tolerance: 1.0
       rolling_window: true
       width: 3
       height: 3
@@ -154,6 +173,7 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
+      transform_tolerance: 1.0
       resolution: 0.05
       robot_radius: 0.16
       track_unknown_space: true
