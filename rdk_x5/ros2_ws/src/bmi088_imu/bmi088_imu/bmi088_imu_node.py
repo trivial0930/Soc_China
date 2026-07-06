@@ -125,7 +125,11 @@ class Bmi088Node(Node):
         msg.orientation_covariance[0] = -1.0
         msg.angular_velocity.x = gx
         msg.angular_velocity.y = gy
-        msg.angular_velocity.z = gz
+        # gz negated: the chip's yaw axis reads inverted vs REP-103 (measured
+        # 2026-07-07 — a physical CCW/left turn gave gyro z < 0). The EKF fuses
+        # ONLY this vyaw component, and it must agree with the (now REP-103)
+        # wheel-odom yaw or the two fight; +z = CCW after this flip.
+        msg.angular_velocity.z = -gz
         for i in (0, 4, 8):
             msg.angular_velocity_covariance[i] = self.gyro_var
         if accel_valid:

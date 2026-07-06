@@ -21,16 +21,21 @@ W = 0.10
 
 
 def firmware_mix(vx, vy, wz):
-    """Replica of STM32 MecanumDrive_Mix -> wheel rad/s (LF, RF, LR, RR)."""
-    # rot sign negated 2026-06-11 to match firmware (mecanum_drive.c): +wz must
-    # produce CCW per REP-103. vy also negated so +vy = LEFT (after the RF<->RR
-    # motor swap, +vy had strafed right). Only those two terms changed.
-    rot = -(L + W) * wz
+    """Standard REP-103 mecanum inverse kinematics (vx,vy,wz)->wheel rad/s
+    (LF, RF, LR, RR). The bridge forward kinematics must invert THIS.
+
+    NOTE (2026-07-07): the actual STM32 firmware MecanumDrive_Mix still uses the
+    OLD left-handed convention (a physical CCW turn measured cmd/odom wz<0, which
+    built a MIRRORED map). We corrected the bridge odom to REP-103 so mapping is
+    right; the firmware command path is still flipped but self-consistent with the
+    teleop joystick sign, so teleop driving is unaffected. Before Nav2 sends
+    velocities the firmware mix + teleop sign must be flipped to match this. """
+    lw = L + W
     return (
-        (vx + vy - rot) / R,
-        (vx - vy + rot) / R,
-        (vx - vy - rot) / R,
-        (vx + vy + rot) / R,
+        (vx - vy - lw * wz) / R,
+        (vx + vy + lw * wz) / R,
+        (vx + vy - lw * wz) / R,
+        (vx - vy + lw * wz) / R,
     )
 
 
@@ -94,8 +99,8 @@ class OdometryIntegrationTest(unittest.TestCase):
     def test_pure_strafe_left_increases_y_only(self):
         odo = self.make()
         odo.update(0, 0, 0, 0, 0.1)
-        # +y (left) pattern wheel rates after vy-sign flip (2026-06-11): (+,-,-,+)
-        st = odo.update(100, -100, -100, 100, 0.1)
+        # +y (left) wheel pattern in the corrected (standard) convention: (-,+,+,-)
+        st = odo.update(-100, 100, 100, -100, 0.1)
         self.assertAlmostEqual(st.x, 0.0, places=9)
         self.assertGreater(st.y, 0.0)
         self.assertAlmostEqual(st.theta, 0.0, places=9)
@@ -103,8 +108,10 @@ class OdometryIntegrationTest(unittest.TestCase):
     def test_pure_rotation_changes_theta_only(self):
         odo = self.make()
         odo.update(0, 0, 0, 0, 0.1)
-        # +wz (CCW) pattern after rot-sign flip (2026-06-11): (+,-,+,-)
-        st = odo.update(100, -100, 100, -100, 0.1)
+        # +wz (CCW) wheel pattern in the corrected (standard) convention: (-,+,-,+)
+        # (2026-07-07: forward kinematics vy/wz signs restored after a physical
+        # CCW turn measured wz<0, i.e. the old odom frame was mirrored)
+        st = odo.update(-100, 100, -100, 100, 0.1)
         self.assertAlmostEqual(st.x, 0.0, places=9)
         self.assertAlmostEqual(st.y, 0.0, places=9)
         self.assertGreater(st.theta, 0.0)

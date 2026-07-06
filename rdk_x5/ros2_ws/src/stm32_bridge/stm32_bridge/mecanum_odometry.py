@@ -58,12 +58,15 @@ def body_twist_from_wheel_rates(
     r = wheel_radius_m
     lw = half_length_m + half_width_m
     vx = r / 4.0 * (w_lf + w_rf + w_lr + w_rr)
-    # vy term negated to match the firmware mix's negated vy sign (2026-06-11),
-    # so +vy = LEFT (REP-103) on both the command and odometry sides.
-    vy = r / 4.0 * (w_lf - w_rf - w_lr + w_rr)
-    # wz term negated to match the firmware mix's negated rot sign (2026-06-11);
-    # this keeps +wz = CCW (REP-103) on both the command and odometry sides.
-    wz = r / (4.0 * lw) * (w_lf - w_rf + w_lr - w_rr)
+    # vy and wz were the NEGATIVE of the standard mecanum forward kinematics, so
+    # the odom frame was left-handed => slam built a left-right MIRRORED map.
+    # Measured 2026-07-07: a physical CCW (left) turn produced wz<0 (should be
+    # >0 per REP-103). Both terms restored to the standard sign so +vy=LEFT,
+    # +wz=CCW. (Odom-only; the STM32 command path is unchanged, so teleop driving
+    # is unaffected. The firmware command convention is still flipped and must be
+    # corrected before Nav2 sends velocities.)
+    vy = r / 4.0 * (-w_lf + w_rf + w_lr - w_rr)
+    wz = r / (4.0 * lw) * (-w_lf + w_rf - w_lr + w_rr)
     return vx, vy, wz
 
 
