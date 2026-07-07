@@ -12,6 +12,7 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+.pytest_venv/
 .pytest_cache/
 
 # ROS2 / colcon
