@@ -240,10 +240,16 @@ class Stm32BridgeNode(Node):
 
     # ---------------- subscribers ----------------
     def _on_cmd_vel(self, msg: Twist) -> None:
+        # /cmd_vel is REP-103 (+vy=LEFT, +wz=CCW) from Nav2 and (after the
+        # teleop_receiver fix) teleop. The STM32 MecanumDrive_Mix still uses the
+        # old flipped vy/wz convention, so this bridge is the REP-103<->firmware
+        # adapter: negate vy/wz on the way OUT (the odom forward-kinematics already
+        # emits REP-103 on the way IN). vx is unchanged. Flip both here + in the
+        # firmware mix if the STM32 is ever reflashed to a standard mix.
         vx, vy, wz, clamped = clamp_cmd_vel(
             int(round(msg.linear.x * 1000.0)),
-            int(round(msg.linear.y * 1000.0)),
-            int(round(msg.angular.z * 1000.0)),
+            int(round(-msg.linear.y * 1000.0)),
+            int(round(-msg.angular.z * 1000.0)),
         )
         # extra project-level clamp
         vx = max(-self.max_vx, min(self.max_vx, vx))

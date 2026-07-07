@@ -64,9 +64,13 @@ class TeleopReceiverNode(Node):
                 data = json.loads(r.read().decode("utf-8"))
             age = float(data.get("age_ms", 1e9))
             if age <= self._staleness_ms:
+                # The App joystick sends the OLD flipped convention (measured
+                # 2026-07-07: a left turn arrives as wz<0). Negate vy+wz here so
+                # /cmd_vel is REP-103 (+wz=CCW, +vy=LEFT) like Nav2's output; the
+                # stm32_bridge then translates REP-103 -> the firmware convention.
                 t.linear.x = float(data.get("vx", 0.0))
-                t.linear.y = float(data.get("vy", 0.0))
-                t.angular.z = float(data.get("wz", 0.0))
+                t.linear.y = -float(data.get("vy", 0.0))
+                t.angular.z = -float(data.get("wz", 0.0))
             # else: stale -> zeros (deadman)
         except Exception:
             pass  # network hiccup -> publish zeros this tick (fail safe)
