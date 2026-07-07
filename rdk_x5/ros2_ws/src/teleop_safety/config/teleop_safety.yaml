@@ -15,7 +15,7 @@ lidar_safety:
     # Near-field self masks [center_deg, half_deg, near_m, ...]: inside each cone,
     # returns closer than near_m are the robot's own body (dropped); farther are
     # still avoided. Rear within 30cm is all chassis (measured) -> [180,45,0.30].
-    near_masks: [180.0, 45.0, 0.30]
+    near_masks: [180.0, 45.0, 0.40]
 
 teleop_receiver:
   ros__parameters:

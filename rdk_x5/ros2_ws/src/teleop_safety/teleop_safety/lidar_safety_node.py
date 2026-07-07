@@ -37,6 +37,12 @@ class LidarSafetyNode(Node):
         # (dropped); farther returns are still avoided. Default: rear 180 +/-45,
         # body within 0.30 m (measured: lidar rear <30cm is all chassis).
         self.declare_parameter("near_masks", [180.0, 45.0, 0.30])
+        # Median window on the gated translation output. The rear near-field is
+        # self-occluded (chassis), so when reversing into the slow zone its noisy
+        # distance bounces the safety scale frame-to-frame -> judder. A short
+        # median rejects those single-frame flickers (both directions) while a
+        # sustained real obstacle still slows/stops within ~n/2 ticks.
+        self.declare_parameter("smooth_window", 5)
 
         def gp(n):
             return self.get_parameter(n).value
@@ -61,6 +67,9 @@ class LidarSafetyNode(Node):
         self._scan = None          # latest LaserScan
         self._teleop = (0.0, 0.0, 0.0)
         self._teleop_ts = self.get_clock().now()
+        self._smooth_n = max(1, int(gp("smooth_window")))
+        self._hist_vx = []            # recent gated vx for median de-flicker
+        self._hist_vy = []
 
         self.create_subscription(LaserScan, str(gp("scan_topic")), self._on_scan, 10)
         self.create_subscription(Twist, str(gp("teleop_topic")), self._on_teleop, 10)
@@ -99,11 +108,19 @@ class LidarSafetyNode(Node):
         s = self._scan
         ovx, ovy, owz, state, front = gate_twist(
             list(s.ranges), s.angle_min, s.angle_increment, vx, vy, wz, self._params)
-        out.linear.x = float(ovx)
-        out.linear.y = float(ovy)
-        out.angular.z = float(owz)
+        # Median de-flicker: rejects single-frame safety-scale bounces (the reverse
+        # judder) in both directions without much lag on sustained obstacles.
+        out.linear.x = self._median_push(self._hist_vx, float(ovx))
+        out.linear.y = self._median_push(self._hist_vy, float(ovy))
+        out.angular.z = float(owz)   # rotation is never gated -> no smoothing
         self._cmd_pub.publish(out)
         self._publish_status(state, front)
+
+    def _median_push(self, hist, value):
+        hist.append(value)
+        if len(hist) > self._smooth_n:
+            hist.pop(0)
+        return sorted(hist)[len(hist) // 2]
 
     def _publish_status(self, state, front):
         front_val = None if front == float("inf") else round(float(front), 3)
