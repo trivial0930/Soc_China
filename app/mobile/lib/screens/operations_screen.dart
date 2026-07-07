@@ -7,6 +7,7 @@ import '../models/report.dart';
 import '../services/api_client.dart';
 import '../services/command_client.dart';
 import '../widgets/common.dart';
+import 'mapping_screen.dart';
 import 'teleop_screen.dart';
 
 /// ④ 操作：从 App 主动下发机器人动作（命令走 POST /api/commands，
@@ -30,6 +31,13 @@ class OperationsScreen extends StatelessWidget {
             subtitle: '摇杆遥控 + 雷达避障状态；松手即停',
             onTap: (c) => Navigator.of(c).push(
                 MaterialPageRoute(builder: (_) => const TeleopScreen())),
+          ),
+          _ActionTile(
+            icon: Icons.map_outlined,
+            title: '建图模式',
+            subtitle: '一键进/退建图；建图中遥控开车 + 存图',
+            onTap: (c) => Navigator.of(c).push(
+                MaterialPageRoute(builder: (_) => const MappingScreen())),
           ),
         ]),
         _section('巡检 / 复核', Icons.travel_explore, [

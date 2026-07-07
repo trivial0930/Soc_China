@@ -16,6 +16,16 @@ class CommandResult {
   CommandResult(this.outcome, {this.commandId});
 }
 
+/// 命令回执（GET /api/commands/{id}）：状态 + 机器人返回的中文 result 文案。
+class CommandReceipt {
+  final String status; // queued | sent | done | failed | canceled
+  final String result; // 机器人回执中文文案，可空
+  CommandReceipt(this.status, this.result);
+  bool get isDone => status == 'done';
+  bool get isFailed => status == 'failed';
+  bool get isTerminal => isDone || isFailed || status == 'canceled';
+}
+
 /// 命令下行客户端：POST /api/commands（见 app/BACKEND_PROMPT_command_api.md）。
 /// 后端未实现命令通道时（404/405/501）返回 notSupported，让 UI 优雅提示而不报错。
 class CommandClient {
@@ -68,6 +78,46 @@ class CommandClient {
       if (body is Map && body['detail'] != null) detail = body['detail'].toString();
     } catch (_) {/* 忽略 */}
     throw ApiException(res.statusCode, detail);
+  }
+
+  /// 拉单条命令回执（GET /api/commands/{id}）。失败/异常返回 null。
+  Future<CommandReceipt?> getReceipt(String commandId) async {
+    try {
+      final res =
+          await _http.get(_cfg.uri('/api/commands/$commandId')).timeout(_timeout);
+      if (res.statusCode != 200) return null;
+      final m = jsonDecode(utf8.decode(res.bodyBytes));
+      if (m is! Map) return null;
+      return CommandReceipt(
+          (m['status'] ?? '').toString(), (m['result'] ?? '').toString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 发命令并轮询直到出终态回执(done/failed/canceled)或超时。
+  /// - 抛 [ApiException]：下发本身失败（如 401 缺 token）。
+  /// - 返回 null：已受理但超时未拿到终态（调用方可用别的信号兜底，如 mode 轮询）。
+  /// - notSupported：返回 failed 回执文案。
+  Future<CommandReceipt?> sendAndAwait(
+    String type,
+    Map<String, dynamic> params, {
+    Duration timeout = const Duration(seconds: 30),
+    Duration poll = const Duration(milliseconds: 700),
+  }) async {
+    final r = await send(type, params);
+    if (r.outcome == CommandOutcome.notSupported) {
+      return CommandReceipt('failed', '后端暂未支持该命令');
+    }
+    final id = r.commandId;
+    if (id == null) return null;
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(poll);
+      final rec = await getReceipt(id);
+      if (rec != null && rec.isTerminal) return rec;
+    }
+    return null; // 超时未出终态
   }
 }
 
