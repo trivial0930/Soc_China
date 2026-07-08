@@ -42,6 +42,10 @@ captures/
 .tmp/
 *.log
 
+# Internal reports / competition materials (local only, not for public repo)
+docs/reports/
+*.rar
+
 # Large local media/model files
 *.mp4
 *.mov
