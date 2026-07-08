@@ -9,7 +9,7 @@
 
 ## 0. 出发前 / 到场前检查
 - 黑药丸 **独立稳压供电**（反复失联根因是它 USB 供电不稳；电源前端要防反接，本工程已两次因反接烧 TB6612）。
-- 网络:Mac/手机与 RDK 同网，或走 Tailscale（Mac `100.114.38.16`）。SSH 抖动多半在 Mac↔RDK 网线 en7。
+- 网络:Mac/手机与 RDK 同网，或走 Tailscale（用 Mac 的 Tailscale IP）。SSH 抖动多半在 Mac↔RDK 网线 en7。
 - 仓库路径:RDK 上是 `/root/Soc_China`；Mac 上**用 `~/projects/Soc_China`**（Desktop 那份被 macOS TCC 拦 EPERM）。
 
 ## 1. 主流程:App 一键建图模式
