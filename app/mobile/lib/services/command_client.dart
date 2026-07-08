@@ -26,7 +26,7 @@ class CommandReceipt {
   bool get isTerminal => isDone || isFailed || status == 'canceled';
 }
 
-/// 命令下行客户端：POST /api/commands（见 app/BACKEND_PROMPT_command_api.md）。
+/// 命令下行客户端：POST /api/commands（契约见 app/API_SPEC.md）。
 /// 后端未实现命令通道时（404/405/501）返回 notSupported，让 UI 优雅提示而不报错。
 class CommandClient {
   CommandClient(this._cfg, {http.Client? client})

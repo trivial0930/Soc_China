@@ -1,55 +1,44 @@
 # Soc_China
 
-面向电子实验室安全的智能巡检与管理系统。
+面向电子实验室安全的智能巡检机器人与管理系统。
 
-本仓库采用 monorepo 结构，统一管理 RDK X5 侧软件、STM32 底层程序、跨端协议、硬件文档、现场验证记录和比赛材料。
+基于地瓜机器人 RDK X5(感知/决策/语音)+ STM32F411(麦轮底盘运动控制)的移动巡检机器人,配套 FastAPI 管理后端与 Flutter 手机 App,实现实验室危险检测、语音交互、远程遥控、SLAM 建图与自主导航的完整闭环。
 
-## 协作分工
+## 核心功能
 
-- 戎择辰：RDK X5、ROS2、视觉、串口节点、日志系统。
-- 戴鹏林：硬件保管、烧录、接线、上电、真实硬件验证、日志和截图回传。
-- 曹鸿治：BOM、接线记录、照片标注、硬件说明、答辩材料。
+- **三级分层危险决策**:L1 端侧 YOLO11 + 热成像快速检测 → L1.5 端侧小 VLM 分级 → L2/L3 云端多模态大模型深度分析,兼顾响应速度与成本。
+- **RGB + 热成像多模态融合**:Thermal-90 热成像与 MIPI 相机标定融合,检测过热设备等热学危险并联动语音播报。
+- **端侧语音交互**:唤醒词 KWS + SenseVoice ASR + TTS 全离线运行,语音下发巡检指令、播报告警。
+- **App 遥控 + 雷达安全层**:手机 App 虚拟摇杆低延迟遥控,激光雷达本地反应式避障门控,断网自动停车。
+- **SLAM 建图与自主导航**:App 一键切换建图模式,slam_toolbox 建图;AMCL + Nav2(MPPI 全向控制)自主导航。
+- **管理端系统**:FastAPI + SQLite 后端(SSE 实时推送、命令下行队列、断网补传)+ Flutter 四屏 App(告警/报告/操作/设置)。
 
-硬件集中在戴鹏林处。涉及电机、主电池、MDDS20、底盘运动的测试，必须有人现场看护。
-
-## 目录
+## 目录结构
 
 ```text
-docs/       架构、硬件、协议、验证记录、报告和原始材料索引
-rdk_x5/     RDK X5 侧 ROS2 工作区、脚本和配置
-stm32/      STM32 固件、CubeMX 工程和底层说明
-shared/     RDK 与 STM32 共用协议、事件结构和配置格式
-sim/        无硬件时的模拟器和样例数据
-tools/      安装、测试、日志收集等项目脚本
+app/        管理后端(FastAPI)、Flutter 手机 App、演示 PWA
+docs/       架构设计、硬件接线、操作手册、通信协议
+rdk_x5/     RDK X5 侧 ROS2 工作区(感知/决策/语音/导航各包)、脚本、地图
+stm32/      STM32 固件(麦轮驱动、编码器、速度 PID、USB CDC 通信)
+shared/     RDK 与 STM32 共用协议、事件结构定义
+sim/        无硬件时的 STM32 模拟器和样例数据
+tests/      host 侧单元测试
+tools/      安装、测试、日志收集脚本
 ```
 
-## 日常流程
+模型训练与部署产物:`yolo_lab_training_export_20260603/`(YOLO 训练脚本与配置)、`rdk_x5_lab_detector_deploy_20260603/`(RDK 端检测器运行时)。
 
-1. 远程成员从 `main` 拉新分支开发代码或文档。
-2. 提交 PR 前写清楚运行命令、交付物和验证方式。
-3. 戴鹏林在真实硬件上拉取代码测试。
-4. 每次测试都记录到 `docs/validation/`，包含 commit id、命令、现象、截图或串口输出。
+## 快速开始
 
-## 当前优先级
+- 后端 + App:见 `app/README.md` 与 `app/API_SPEC.md`。
+- RDK 侧 ROS2 工作区:见 `rdk_x5/README.md`。
+- STM32 固件:见 `stm32/README.md`。
+- 建图与导航操作:见 `docs/ops/lab_mapping_procedure.md`、`docs/ops/lab_nav_procedure.md`。
 
-1. 在 RDK X5 上实测 WiFi 固定摄像头 RTSP 输入，记录 IP、码流、分辨率、帧率和截图。
-2. 在 RDK X5 上编译并启动 `perception_camera`，确认 `/fixed_camera/image_raw` 稳定发布。
-3. 在 STM32 CubeMX 工程中接入麦轮驱动回调，实测 MDDS20 四轮方向。
-4. 完成 RDK-STM32 UART 协议实现和实板互测。
-5. 每次真实硬件测试都补充 `docs/validation/` 记录。
-
-## 当前已实现
-
-- STM32 麦轮底盘驱动：`stm32/firmware/Core/Inc/mecanum_drive.h`、`stm32/firmware/Core/Src/mecanum_drive.c`。
-- 固定监控摄像头接入：`rdk_x5/ros2_ws/src/perception_camera/`。
-- WiFi/RTSP 固定摄像头方案：`docs/hardware/wifi_camera.md`。
-- 摄像头链路检测脚本：`rdk_x5/scripts/check_wifi_camera.sh`。
-- RDK 固定摄像头启动脚本：`rdk_x5/scripts/run_fixed_camera.sh`。
-
-RDK 上的 WiFi 摄像头启动示例：
+## 测试
 
 ```bash
-./tools/setup_rdk.sh
-CAMERA_URL=rtsp://USER:PASSWORD@CAMERA_IP:554/stream1 ./rdk_x5/scripts/check_wifi_camera.sh
-SOURCE_TYPE=opencv SOURCE_URI=rtsp://USER:PASSWORD@CAMERA_IP:554/stream1 ./rdk_x5/scripts/run_fixed_camera.sh
+python -m pytest tests/
 ```
+
+涉及电机、主电池、底盘运动的真机测试,必须有人现场看护。

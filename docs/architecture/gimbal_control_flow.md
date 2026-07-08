@@ -233,7 +233,6 @@ gimbal_controller_node:
 1. 编写 GPIO 和 PWM 封装，但默认不输出占空比。
 2. 运行节点，确认 EN 引脚保持关闭。
 3. 发布 `/gimbal/status`，确认状态进入 `IDLE` 或 `I2C_CHECK`。
-4. 记录到 `docs/validation/daily/`。
 
 ### 阶段 B：编码器读取
 

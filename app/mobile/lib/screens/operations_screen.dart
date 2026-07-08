@@ -11,7 +11,7 @@ import 'mapping_screen.dart';
 import 'teleop_screen.dart';
 
 /// ④ 操作：从 App 主动下发机器人动作（命令走 POST /api/commands，
-/// 见 app/BACKEND_PROMPT_command_api.md）。后端未实现时按钮优雅提示"待支持"。
+/// 契约见 app/API_SPEC.md）。后端未实现时按钮优雅提示"待支持"。
 class OperationsScreen extends StatelessWidget {
   const OperationsScreen({super.key});
 

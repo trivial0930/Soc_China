@@ -1,7 +1,6 @@
 # teleop_safety
 
-App 遥控接收 + 雷达本地安全层(反应式避障 A 阶段)。设计见
-`docs/superpowers/specs/2026-06-27-app-teleop-lidar-safety-design.md`。
+App 遥控接收 + 雷达本地安全层(反应式避障 A 阶段)。
 
 ## 节点
 - **lidar_safety_node**:`/scan` + `/cmd_vel_teleop` → 门控 → `/cmd_vel` + `/safety/status`。
@@ -22,9 +21,9 @@ ros2 launch teleop_safety teleop_safety.launch.py \
     backend_url:=http://192.168.128.100:8000 ingest_token:=<token>
 ```
 
-## 依赖后端/前端(另由 agent 实现)
-- 后端:`POST/GET /api/robot/teleop`(最新速度,覆盖式)、`POST/GET /api/robot/teleop/status`。见 `app/BACKEND_PROMPT_teleop.md`。
-- 前端:遥控页虚拟摇杆 + 安全状态显示。见 `app/FRONTEND_PROMPT_teleop.md`。
+## 依赖后端/前端
+- 后端:`POST/GET /api/robot/teleop`(最新速度,覆盖式)、`POST/GET /api/robot/teleop/status`。契约见 `app/API_SPEC.md` §4.7。
+- 前端:遥控页虚拟摇杆 + 安全状态显示。
 
 ## 参数
 见 `config/teleop_safety.yaml`(扇区角、stop/slow 阈值、轮询率、backend_url/token 等)。

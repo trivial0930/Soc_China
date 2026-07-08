@@ -17,7 +17,7 @@
 
 - 开关状态以 RDK 回报的真实 mode 为准:`normal`(正常)/`switching`(切换中,十几秒,禁开关)/`mapping`(建图中)/`mapping_error`(进建图失败,已停在安全态,可重试/退出)。
 - 进建图失败会**停在安全态、不自动回滚**:App 显示红色错误,点【退出】恢复语音或【重试】。
-- 实现:命令经现有命令队列(`set_mode`/`save_map`)→ RDK `command_receiver` 调 `mapping_mode_on.sh`/`off.sh`/`save_map.sh`;状态文件 `/root/.robot_mode`,经 uplink/command_receiver 上报。设计见 `docs/superpowers/specs/2026-06-30-app-mapping-mode-design.md`。
+- 实现:命令经现有命令队列(`set_mode`/`save_map`)→ RDK `command_receiver` 调 `mapping_mode_on.sh`/`off.sh`/`save_map.sh`;状态文件 `/root/.robot_mode`,经 uplink/command_receiver 上报。
 
 > 关开关 = 拆建图栈 + 重拉语音栈。命令通道(uplink+command_receiver+acceptance)全程不停,所以建图中也始终能从 App 发"退出"。
 > 注意:建图模式中若 RDK 重启,开机自启会拉回正常语音栈,但状态文件 `/root/.robot_mode` 仍记 `mapping`(App 会短暂显示建图中);点一次 OFF 即自愈回 normal。建图是临时态,别让它跨重启。
@@ -90,4 +90,4 @@ scp root@192.168.128.10:'~/lab_map.*' ~/projects/Soc_China/rdk_x5/maps/
 存好图后做 Nav2:AMCL 定位 + MPPI(Omni) 控制 + costmap，在 `~/lab_map` 上自主导航（已配未实测）。
 
 ---
-关联:`rdk_x5/ros2_ws/src/chassis_bringup/launch/mapping.launch.py`、`docs/validation/daily/2026-06-27-pcb-bringup-teleop-lidar-safety.md`、teleop_safety 包 README。
+关联:`rdk_x5/ros2_ws/src/chassis_bringup/launch/mapping.launch.py`、teleop_safety 包 README。

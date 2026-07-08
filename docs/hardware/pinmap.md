@@ -36,8 +36,7 @@ SPI 节点 `/dev/spidev5.0`，I2C 总线 `/dev/i2c-5`。
 > ✅ **SPI 已打通（2026-06-07）**：用 `spidev1.1`(SPI1, `34010000.spi`)，自定义 overlay
 > `dtoverlay_spi1_spidev1_x5_rdk` 在云台 overlay 之后 re-enable SPI1；`SS` 改接 **BOARD 7** 做软件片选
 > （spidev 在本 SoC 不驱动 CS），SPI 速率降到 4MHz，开启 MI48 片上滤波 → 读到正常热成像。
-> 工作参数：`--spi-bus 1 --spi-device 1 --i2c-bus 5 --cs-gpio-pin 7`。详见
-> `docs/validation/daily/2026-06-07-thermal-90-bringup.md`。MOSI/MISO/SCLK 仍在 19/21/23。
+> 工作参数：`--spi-bus 1 --spi-device 1 --i2c-bus 5 --cs-gpio-pin 7`。MOSI/MISO/SCLK 仍在 19/21/23。
 
 ## STM32F411CEU6（事实源:固件 main.c app_motor_hw + hal_msp.c,2026-06-14 实测核对）
 

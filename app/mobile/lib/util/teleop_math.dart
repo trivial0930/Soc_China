@@ -1,5 +1,5 @@
 /// 遥控速度范围与摇杆→速度映射（纯函数，可单测）。
-/// 范围与底盘限速一致（见 app/FRONTEND_PROMPT_teleop.md）。
+/// 范围与底盘限速一致（契约见 app/API_SPEC.md §4.7）。
 library;
 
 class TeleopLimits {

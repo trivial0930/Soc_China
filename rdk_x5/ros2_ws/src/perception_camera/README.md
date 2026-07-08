@@ -141,5 +141,4 @@ PC 浏览器访问 `http://RDK_IP:8000`。
 每次换摄像头或改网络地址，都需要更新：
 
 - `docs/hardware/pinmap.md`
-- `docs/validation/daily/` 当天记录
 - 摄像头 IP、账号权限、码流地址、分辨率和帧率

@@ -152,7 +152,7 @@ Gimbal I2C buses: 5, 1
 | RESET | 16 | GPIO，模块复位（Hobot.GPIO 导不出，驱动已容错走软上电） |
 | READY | 13 | GPIO，数据就绪（驱动改用轮询 STATUS，不依赖此脚） |
 
-关键软件配置（详见 `docs/validation/daily/2026-06-07-thermal-90-bringup.md`）：
+关键软件配置：
 
 - 自定义 overlay `dtoverlay_spi1_spidev1_x5_rdk`（列在云台 overlay 之后，re-enable SPI1）→ `/dev/spidev1.1`。
 - `spidev bufsiz=20480`（`/etc/modprobe.d/spidev.conf` 持久化），整帧用 `xfer3` 单次读。
@@ -314,8 +314,8 @@ RDK 上已有现成 SPI5 spidev overlay：
 ## 4. 下一步硬件总线打通流程
 
 > ⚠️ **本节（4.x）已作废**：当时设想用 `dtoverlay_spi5_spidev` + `spidev5.0`，实测该控制器没路由到 40PIN，行不通。
-> 最终用的是 SPI1（`dtoverlay_spi1_spidev1_x5_rdk` + `/dev/spidev1.1`）+ GPIO 软件片选，详见
-> `docs/validation/daily/2026-06-07-thermal-90-bringup.md`。以下 4.x 内容仅作历史排查记录保留。
+> 最终用的是 SPI1（`dtoverlay_spi1_spidev1_x5_rdk` + `/dev/spidev1.1`）+ GPIO 软件片选。
+> 以下 4.x 内容仅作历史排查记录保留。
 
 ### 4.1 启用 SPI5 spidev overlay
 

@@ -1,18 +1,18 @@
 # Docs
 
-本目录保存项目中需要长期协作和复盘的文档。
+本目录保存项目的技术文档。
 
-- `code_upload_log.md`：每次上传代码的日期、提交号、目录结构、内容和验证记录。
-- `architecture/`：总体架构、演示闭环、分层处理方案。
-- `hardware/`：BOM、供电、接线、接口编号、照片标注。
+- `architecture/`：总体架构、感知/决策/语音各子系统设计与部署说明。
+- `hardware/`：供电、接线、接口编号、转接板布局。
+- `ops/`：现场操作手册（建图、自主导航）。
 - `protocols/`：RDK X5 与 STM32、模块间消息格式。
-- `validation/`：每日调试记录、周末联调记录、故障复盘。
-- `reports/`：技术文档、PPT、视频脚本、答辩问答。
-- `source/`：原始文档索引和转换说明。
 
 ## 当前关键文档
 
-- `architecture/camera_ingest.md`：固定监控摄像头接入 RDK X5 的模块边界、ROS2 话题和验证标准。
-- `hardware/wifi_camera.md`：固定摄像头通过 WiFi/RTSP 向 RDK X5 传输视频的网络方案和现场记录项。
+- `architecture/three_layer_hazard_decision.md`：三级分层危险决策架构。
+- `architecture/thermal_multimodal_hazard_detector.md`：RGB+热成像多模态危险检测。
+- `architecture/voice_asr_setup.md`：端侧语音交互（KWS/ASR/TTS）部署。
 - `hardware/pinmap.md`：RDK、STM32、摄像头和底盘相关接口编号。
-- `protocols/rdk_stm32_uart.md`：RDK 与 STM32 控制链路草案。
+- `ops/lab_mapping_procedure.md`：实验室建图操作手册。
+- `ops/lab_nav_procedure.md`：Nav2 自主导航操作手册。
+- `protocols/rdk_stm32_uart.md`：RDK 与 STM32 控制链路协议。

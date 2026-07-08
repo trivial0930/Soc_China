@@ -88,7 +88,7 @@ event: ping        data: {}
 > 提示:Mac IP 实测会变(192.168.128.100 → 192.168.5.41),App 地址可配置正为此;模拟器连本机后端用 `http://10.0.2.2:8000`。
 
 ## 待后端确认(契约外需求,如有则在此登记)
-- **【命令下行通道 / Command API】** App 已新增「操作」Tab,需要把用户操作(发起巡检/到点复核/课后验收/寻找物品导航·激光/语音提醒/激光指示/生成报告)下发给机器人。当前系统纯单向(只上行无下行),需后端新增命令队列 + `POST /api/commands` + `GET /api/commands[/{id}]` + 机器人轮询通道(`GET /api/robot/commands/pending`、`POST .../{id}/ack|result`),机器人 agent 加命令接收节点。**完整任务说明见 [`BACKEND_PROMPT_command_api.md`](BACKEND_PROMPT_command_api.md)**。前端已按该契约实现(`command_client.dart`),后端未实现时 App 收 404 会优雅提示"待支持",不阻塞。
+- **【命令下行通道 / Command API】** App 已新增「操作」Tab,需要把用户操作(发起巡检/到点复核/课后验收/寻找物品导航·激光/语音提醒/激光指示/生成报告)下发给机器人。当前系统纯单向(只上行无下行),需后端新增命令队列 + `POST /api/commands` + `GET /api/commands[/{id}]` + 机器人轮询通道(`GET /api/robot/commands/pending`、`POST .../{id}/ack|result`),机器人侧加命令接收节点。契约详见 `API_SPEC.md` §4.6。前端已按该契约实现(`command_client.dart`),后端未实现时 App 收 404 会优雅提示"待支持",不阻塞。
 - (其余)正式 App 其它功能完全按 API_SPEC v1 即可,无需契约新增字段。
 
 ---
