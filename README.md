@@ -1,83 +1,85 @@
-# 基于 RDK X5 的电子实验室移动智能管家与云边端 AI 分层协同优化
+# RDK X5-Based Mobile Intelligent Steward for Electronics Labs with Cloud–Edge–Device Tiered AI Collaboration
 
-面向高校电子实验室"人、物、环境"协同管理的移动智能巡检机器人系统。全国大学生嵌入式芯片与系统设计竞赛·芯片应用赛道(地瓜机器人赛题)参赛作品。
+[中文](README_cn.md) | **English**
 
-## 项目简介
+A mobile intelligent inspection robot system for coordinated "people–equipment–environment" management in university electronics laboratories. Entry for the National College Student Embedded Chip and System Design Competition, Chip Application Track (D-Robotics theme).
 
-高校电子实验室设备密集、线路复杂:电烙铁、热风枪、排插等对象存在局部发热与遗忘断电风险;人工巡检受经验、时间和工作量制约;器材查询、工位留痕与课后验收彼此割裂。
+## Overview
 
-本作品以地瓜机器人 **RDK X5**(8 核 Cortex-A55 + 10 TOPS BPU)为核心,研制电子实验室移动智能管家,在不替代教师最终判断的前提下,将**安全巡检、移动感知、教学辅助和过程归档**组织为可追溯的任务闭环:
+University electronics labs are dense with equipment and wiring: soldering irons, hot-air guns, and power strips carry risks of localized overheating and being left powered on. Manual inspection is constrained by experience, time, and workload, while equipment lookup, workstation records, and after-class inspection are typically disconnected from each other.
 
-- **安全侧**:定时计划 / 预设工位路线 / App 任务驱动机器人自主到达目标位置,双轴云台完成 RGB—热成像近距采集与风险分级,通过语音、激光和 App 提示处置,整改后复检归档。
-- **教学侧**:课前记录工位现场,课中支持设备与耗材位置查询(App / 语音 / 激光指示),课后按工位模板检查工具归位、导线散落、可燃物遗留与电源状态。
+This project builds a mobile intelligent lab steward around the D-Robotics **RDK X5** (8× Cortex-A55 + 10 TOPS BPU). Without replacing the instructor's final judgment, it organizes **safety patrol, mobile perception, teaching assistance, and process archiving** into a traceable task loop:
 
-## 系统组成
+- **Safety loop**: scheduled plans, preset workstation routes, or App tasks drive the robot to autonomously reach target positions. A two-axis gimbal performs close-range RGB–thermal capture and risk grading, alerts via voice, laser pointer, and App; after remediation the robot re-checks and archives the event.
+- **Teaching loop**: records workstation state before class, supports equipment/consumable location queries during class (App / voice / laser pointing), and checks tool return, scattered wires, flammable leftovers, and power state against per-workstation templates after class.
 
-| 部分 | 方案 |
+## System Composition
+
+| Part | Solution |
 | --- | --- |
-| 边缘主控 | RDK X5 8GB — BPU 视觉推理、导航、语音、任务与事件管理 |
-| 运动控制 | STM32F411CEU6 — 50 Hz 四轮独立 PID、编码器采集、命令/心跳超时停车,USB CDC 上行 |
-| 底盘 | 2×TB6612FNG + 4×520 编码器减速电机 + 麦克纳姆轮(全向移动),自研控制转接板 PCB |
-| 环境感知 | 镭神 N10 激光雷达;BMI088 IMU(陀螺偏航与轮式里程计 EKF 融合,加速度计异常自动 gyro-only 降级) |
-| 视觉/热像 | MIPI RGB 相机(120°)+ 微雪 Thermal-90 热成像,共装于双轴 FOC 云台(2804 无刷 + AS5600 + SimpleFOC) |
-| 语音交互 | 降噪麦克风 + USB 音响,全离线 KWS 唤醒(「小巡」)/ VAD / SenseVoice ASR / TTS |
-| 车载网络 | GL.iNet MT300N-V2 随车路由:有线直连 RDK,桥接现场 Wi-Fi/热点,承载 App 接入与数据上行 |
-| 管理端 | FastAPI + SQLite + SSE 后端,Flutter 手机 App(含同契约 PWA 验证端) |
+| Edge computer | RDK X5 8GB — BPU vision inference, navigation, voice, task and event management |
+| Motion controller | STM32F411CEU6 — 50 Hz four-wheel independent PID, encoder capture, command/heartbeat timeout stop, USB CDC link |
+| Chassis | 2× TB6612FNG + 4× 520 geared motors with encoders + mecanum wheels (omnidirectional), custom breakout PCB |
+| Environment sensing | LSLIDAR N10 2D lidar; BMI088 IMU (gyro yaw fused with wheel odometry via EKF; accelerometer failure auto-degrades to gyro-only) |
+| Vision / thermal | MIPI RGB camera (120° FOV) + Waveshare Thermal-90 thermal module, co-mounted on a two-axis FOC gimbal (2804 BLDC + AS5600 + SimpleFOC) |
+| Voice interaction | Noise-canceling microphone + USB speaker; fully offline KWS wake word / VAD / SenseVoice ASR / TTS |
+| Onboard network | GL.iNet MT300N-V2 travel router fixed on the robot: wired to the RDK, bridging site Wi-Fi/hotspot for App access and data uplink |
+| Management side | FastAPI + SQLite + SSE backend, Flutter mobile App (plus a PWA sharing the same API contract) |
 
-软件基于 Ubuntu 22.04 + ROS 2 Humble / TogetheROS.Bot;建图用 slam_toolbox,定位导航用 AMCL + Nav2(MPPI 全向控制)。
+Software runs on Ubuntu 22.04 + ROS 2 Humble / TogetheROS.Bot; mapping with slam_toolbox, localization and navigation with AMCL + Nav2 (MPPI omnidirectional controller).
 
-## 主要创新点
+## Key Innovations
 
-1. **RGB—热成像对象级融合**:BPU 运行 YOLO11s 检测 10 类危险对象,RGB 目标框与 Thermal-90 温度矩阵经镜像/旋转/3×3 仿射标定空间关联,综合「对象类别 + 热点位置 + 温度 + 持续时间」分级风险——从"发现高温"升级为"判断危险对象";无法关联的显著热点输出"未识别热源"转人工复核,避免漏报。
-2. **复杂度驱动的云—边—端四级分层认知**:L1 端侧 BPU 实时检测 → L1.5 端侧轻量语义复判 → L2 局域网多模态理解(Qwen2.5-VL)→ L3 云端按需分析。正常数据本地过滤,只有复杂事件才逐级上调,且只上传裁剪、脱敏的最小证据包;任一级超时/离线自动回退本地规则模板,大模型只返回结构化建议、不能直接控制底盘或关闭事件。
-3. **App→RDK→STM32 多级安全与自恢复链路**:App 松手/离页即发零速度、RDK 桥接 0.5 s 速度超时清零、STM32 0.5 s 命令 + 2 s 心跳超时停车、独立硬件看门狗(IWDG ~250 ms)在固件挂死时强制复位并关闭 PWM;复位原因与 HardFault 现场写 .noinit 内存供下次启动取证;USB CDC 断链自动重连、重发模式并重锚定里程计——"先保证停车,再追求智能"。
-4. **event_id 贯穿的可追溯事件闭环**:发现—复核—处置—复检—归档全流程状态机,与机器人任务状态机分离;断网期间关键告警进入不限次重试队列,恢复后按 event_id 幂等补传,零丢失、不重复;语音、App、自动巡检三个入口复用同一 CommandExecutor,行为一致。
+1. **Object-level RGB–thermal fusion**: YOLO11s on the BPU detects 10 hazardous object classes; RGB bounding boxes are spatially associated with the Thermal-90 temperature matrix via mirror/rotation/3×3 affine calibration, grading risk from "object class + hotspot position + temperature + duration" — upgrading "found a hot spot" to "identified a hazardous object". Significant hotspots that match no known object are reported as "unidentified heat source" for human review, preventing missed alarms.
+2. **Complexity-driven four-tier cloud–edge–device cognition**: L1 on-device BPU real-time detection → L1.5 on-device lightweight semantic re-check → L2 LAN multimodal understanding (Qwen2.5-VL) → L3 cloud analysis on demand. Normal data is filtered locally; only complex events escalate, uploading a cropped, de-identified minimal evidence package. Any tier timing out or going offline falls back to local rule templates; large models only return structured suggestions and can never drive the chassis or close events.
+3. **Multi-level safety and self-recovery chain across App → RDK → STM32**: the App sends zero velocity on release/page-leave; the RDK bridge zeroes the target after 0.5 s without commands; the STM32 stops on 0.5 s command / 2 s heartbeat timeouts; an independent hardware watchdog (IWDG, ~250 ms) force-resets and shuts off PWM if the firmware hangs. Reset causes and HardFault context are written to .noinit memory for forensics on next boot; after a USB CDC drop the bridge auto-reconnects, resends the mode, and re-anchors odometry — "guarantee stopping first, then pursue intelligence".
+4. **Traceable event loop keyed by event_id**: a discover–verify–handle–recheck–archive state machine, separated from the robot task state machine. During network outages critical alerts enter an unlimited-retry queue and are idempotently re-uploaded by event_id after recovery — zero loss, no duplicates. Voice, App, and autonomous patrol entry points reuse one CommandExecutor for consistent behavior.
 
-## 实测性能(真实实验室多次验证)
+## Field-Verified Performance (repeated real-lab validation)
 
-| 指标 | 结果 |
+| Metric | Result |
 | --- | --- |
-| BPU 危险物检测 | YOLO11s 640 输入,约 3~4 FPS;独立验证集 mAP50=0.5183(主模型 YOLO11m mAP50=0.8178) |
-| RGB—热像标定 | 中央区域重投影误差约 10 px |
-| 语音实时性 | KWS RTF≈0.19,ASR RTF≈0.3,TTS 短指令回执约 0.5 s(模型常驻) |
-| L2 边侧理解 | Qwen2.5-VL 7B 热调用约 1.4 s |
-| 建图 | 约 17.4 m × 10.3 m 实验室,闭环残差约 27 cm |
-| 自主导航 | AMCL + Nav2 目标到达 SUCCEEDED,多次反复验证 |
-| 断网补传 | 断网 45 s 故障注入,关键事件 0 丢失、恢复全量补传 |
-| 通信自愈 | USB CDC 强制重枚举后里程计约 2~3 s 恢复,位姿不跳变 |
-| 回归测试 | 426 项测试全部通过(后端接口/安全门控/语音意图/巡检流水线/建图切换/断网补传) |
+| BPU hazard detection | YOLO11s @ 640 input, ~3–4 FPS; independent validation mAP50 = 0.5183 (primary YOLO11m model mAP50 = 0.8178) |
+| RGB–thermal calibration | ~10 px reprojection error in the central region |
+| Voice real-time factor | KWS RTF ≈ 0.19, ASR RTF ≈ 0.3, TTS short-command response ~0.5 s (resident model) |
+| L2 edge understanding | Qwen2.5-VL 7B warm call ~1.4 s |
+| Mapping | ~17.4 m × 10.3 m lab, loop-closure residual ~27 cm |
+| Autonomous navigation | AMCL + Nav2 goal reached SUCCEEDED, repeatedly verified |
+| Offline retransmission | 45 s network-outage fault injection: 0 critical events dropped, full re-upload on recovery |
+| Link self-healing | odometry recovers ~2–3 s after forced USB CDC re-enumeration, no pose jump |
+| Regression tests | 426 tests all passing (backend API / safety gating / voice intent / patrol pipeline / mapping mode / retransmission) |
 
-## 目录结构
+## Repository Layout
 
 ```text
-app/        管理后端(FastAPI/SQLite/SSE)、Flutter 手机 App、演示 PWA
-docs/       架构设计、硬件接线、操作手册、通信协议
-rdk_x5/     RDK X5 侧 ROS2 工作区(感知/决策/语音/导航各包)、脚本、地图
-stm32/      STM32 固件(麦轮驱动、编码器、速度 PID、USB CDC、IWDG 看门狗)
-shared/     RDK 与 STM32 共用协议、事件结构定义
-sim/        无硬件时的 STM32 模拟器和样例数据
-tests/      host 侧单元测试
-tools/      安装、测试、日志收集脚本
+app/        Management backend (FastAPI/SQLite/SSE), Flutter mobile App, demo PWA
+docs/       Architecture design, hardware wiring, operation manuals, protocols
+rdk_x5/     RDK X5-side ROS 2 workspace (perception/decision/voice/navigation), scripts, maps
+stm32/      STM32 firmware (mecanum drive, encoders, velocity PID, USB CDC, IWDG watchdog)
+shared/     Protocols and event schemas shared between RDK and STM32
+sim/        STM32 simulator and sample data for hardware-free development
+tests/      Host-side unit tests
+tools/      Setup, testing, and log-collection scripts
 ```
 
-模型训练与部署产物:`yolo_lab_training_export_20260603/`(YOLO 训练脚本与配置)、`rdk_x5_lab_detector_deploy_20260603/`(RDK 端检测器运行时)。
+Model training and deployment artifacts: `yolo_lab_training_export_20260603/` (YOLO training scripts and configs), `rdk_x5_lab_detector_deploy_20260603/` (RDK-side detector runtime).
 
-## 快速开始
+## Quick Start
 
-- 后端 + App:见 `app/README.md` 与 `app/API_SPEC.md`。
-- RDK 侧 ROS2 工作区:见 `rdk_x5/README.md`。
-- STM32 固件:见 `stm32/README.md`。
-- 建图与导航操作:见 `docs/ops/lab_mapping_procedure.md`、`docs/ops/lab_nav_procedure.md`。
+- Backend + App: see `app/README.md` and `app/API_SPEC.md`.
+- RDK-side ROS 2 workspace: see `rdk_x5/README.md`.
+- STM32 firmware: see `stm32/README.md`.
+- Mapping and navigation operations: see `docs/ops/lab_mapping_procedure.md`, `docs/ops/lab_nav_procedure.md`.
 
-运行测试:
+Run tests:
 
 ```bash
 python -m pytest tests/
 ```
 
-## 安全与边界声明
+## Safety and Scope Statement
 
-- 系统定位为管理人员的**辅助工具**,高风险结论保留人工确认,不替代专业电气检测与安全责任。
-- 大模型仅输出结构化建议,不具备底盘控制权与事件关闭权。
-- 部署须设置 `APP_INGEST_TOKEN` 写鉴权并限制在受控局域网内,不向公网暴露端口。
-- 涉及电机、主电池、底盘运动的真机测试,必须有人现场看护。
+- The system is positioned as an **assistant** for lab managers; high-risk conclusions require human confirmation. It does not replace professional electrical inspection or safety accountability.
+- Large models only output structured suggestions and have no authority to control the chassis or close events.
+- Deployments must set the `APP_INGEST_TOKEN` write-auth token and stay within a controlled LAN; no ports are exposed to the public internet.
+- Any real-machine test involving motors, the main battery, or chassis motion must be supervised on site.
